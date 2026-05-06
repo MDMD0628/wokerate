@@ -1,6 +1,6 @@
 # Workerate Candidate Intake MVP
 
-풀스택 개발자 후보자의 비정형 프로젝트 경험을 분석 가능한 `candidate_profile.json`으로 구조화하는 첫 MVP입니다.
+풀스택 개발자 후보자가 자발적으로 참여해 개인정보 수집·이용 및 AI 분석에 동의한 뒤, GitHub, 포트폴리오, 프로젝트 경험, 협업 경험, 문제 해결 경험을 분석 가능한 JSON으로 구조화하는 첫 MVP입니다.
 
 ## 실행
 
@@ -22,14 +22,33 @@ OPENAI_MODEL=gpt-4o-mini
 
 `OPENAI_API_KEY`가 없으면 로컬 테스트를 위해 기본 추가 질문 JSON을 반환합니다.
 
+## Supabase 저장
+
+Supabase 저장은 `app/api/submit-candidate/route.ts` 서버 라우트에서만 처리합니다.
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+```
+
+`SUPABASE_SERVICE_ROLE_KEY`는 클라이언트 컴포넌트에서 import하지 않습니다. 공개 저장소에는 `.env.local.example`만 올리고, 실제 값은 `.env.local` 또는 배포 환경변수에만 넣어야 합니다.
+
 ## 포함된 기능
 
+- 커뮤니티 유입용 랜딩 페이지
+- 개인정보 수집·이용 필수 동의
+- 후보자 제출자료 AI 분석 필수 동의
+- 기업 매칭 활용 및 제3자 제공 선택 동의
+- 후속 실험 및 서비스 안내 수신 선택 동의
 - 단계별 후보자 데이터 입력
-- 대표 프로젝트 최소 2개, 최대 3개 입력
+- 대표 프로젝트 최소 1개, 최대 3개 입력
+- 협업 경험 입력
 - localStorage 자동 저장
 - `/api/generate-followups` API Route 기반 추가 질문 생성
 - AI 추가 질문 답변 저장
 - 최종 요약 확인
 - `candidate_profile.json` 다운로드
+- `consent_log.json` 다운로드
+- Supabase `candidate_submissions` 테이블 저장
 
-현재 버전은 분석을 위한 데이터 수집만 다루며 매칭, 점수, 합격/탈락, 사람에 대한 평가는 포함하지 않습니다.
+현재 버전은 localStorage와 JSON Export를 유지하면서, 환경변수가 설정된 경우 Supabase 저장도 사용할 수 있습니다. 채용 합격/탈락, 사람에 대한 평가, 기업 제공 기능은 포함하지 않습니다.

@@ -1,36 +1,46 @@
 "use client";
 
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   BriefcaseBusiness,
+  Building2,
   CheckCircle2,
   ClipboardList,
   Download,
+  FileCheck2,
   FileJson,
   Link as LinkIcon,
   Loader2,
+  MailCheck,
   MessageSquareText,
   Plus,
   Save,
+  Send,
+  ShieldCheck,
   Sparkles,
   Trash2,
-  UserRound
+  UserRound,
+  UsersRound
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 type CandidateBasicInfo = {
-  name: string;
+  name_or_nickname: string;
   email: string;
-  experience_level: string;
+  current_status: string;
+  preferred_work_type: string[];
+  tech_stack: string[];
 };
 
 type CandidateLinks = {
   github_url: string;
   portfolio_url: string;
   deployed_service_url: string;
-  linkedin_or_blog_url: string;
+  blog_url: string;
+  linkedin_url: string;
 };
 
 type FollowUpQuestion = {
@@ -48,6 +58,7 @@ type Project = {
   name: string;
   url: string;
   github_url: string;
+  project_type: string;
   purpose: string;
   role: string;
   tech_stack: string[];
@@ -59,72 +70,126 @@ type Project = {
   deployment_experience: string;
   real_user_or_client: string;
   collaboration_people: string;
-  collaboration_type: string;
   difficulty: string;
   solution_process: string;
   result: string;
+  capacity_reason: string;
   ai_follow_up_answers: FollowUpAnswer[];
+};
+
+type CollaborationExperience = {
+  pr_issue_code_review: string;
+  role_distribution: string;
+  requirement_change_response: string;
+  delay_or_error_communication: string;
+  non_developer_communication: string;
+  collaboration_difficulty_solution: string;
 };
 
 type CandidateDraft = {
   candidate_basic_info: CandidateBasicInfo;
   links: CandidateLinks;
-  tech_stack: string[];
-  preferred_work_type: string[];
   projects: Project[];
+  collaboration_experience: CollaborationExperience;
   raw_ai_follow_up_questions: FollowUpQuestion[];
+};
+
+type ConsentState = {
+  privacy_collection_required: boolean;
+  ai_analysis_required: boolean;
+  third_party_matching_optional: boolean;
+  marketing_optional: boolean;
+  consented_at: string;
+};
+
+type ConsentLog = {
+  privacy_collection_required: boolean;
+  ai_analysis_required: boolean;
+  third_party_matching_optional: boolean;
+  marketing_optional: boolean;
+  consent_version: string;
+  consented_at: string;
+  policy_summary: {
+    retention_period: string;
+    purpose: string;
+    third_party_provision: string;
+  };
+};
+
+type SubmitResult = {
+  candidate_profile: ReturnType<typeof buildCandidateProfile>;
+  consent_log: ConsentLog;
 };
 
 type StoredState = {
   activeStep: number;
   draft: CandidateDraft;
+  consent: ConsentState;
+  submitted: boolean;
+  database_submitted?: boolean;
+  database_submission_id?: string;
 };
 
-const STORAGE_KEY = "workerate_candidate_profile_draft_v1";
+const STORAGE_KEY = "workerate_candidate_profile_consent_draft_v2";
+const CONSENT_VERSION = "2026-05-06-v1";
+const DELETE_REQUEST_TEXT = "삭제 요청: 운영자 이메일 입력 예정";
+
+const currentStatusOptions = [
+  "취업 준비 중",
+  "재직 중",
+  "프리랜서",
+  "학생",
+  "사이드프로젝트 중",
+  "기타"
+];
 
 const preferredWorkOptions = [
   "MVP 제작",
+  "SaaS 개발",
   "프론트엔드 중심",
   "백엔드 중심",
   "풀스택 전체",
   "유지보수",
-  "SaaS 개발"
+  "관리자 페이지 개발",
+  "API 연동",
+  "AI 기능 연동"
 ];
 
 const techExamples = [
   "React",
   "Next.js",
+  "TypeScript",
   "Node.js",
-  "Express",
   "NestJS",
+  "Express",
   "PostgreSQL",
   "Supabase",
   "Firebase",
   "AWS",
-  "Cloudflare"
-];
-
-const experienceOptions = [
-  "주니어",
-  "1~3년",
-  "3~5년",
-  "5년 이상",
-  "프리랜서 경험 있음"
+  "Cloudflare",
+  "Vercel",
+  "Docker"
 ];
 
 const projectTypeOptions = [
-  "개인작업",
-  "팀프로젝트",
+  "개인 프로젝트",
+  "팀 프로젝트",
   "외주",
   "실무",
-  "클론코딩"
+  "클론코딩",
+  "사이드프로젝트",
+  "오픈소스"
 ];
 
 const steps: Array<{ title: string; icon: LucideIcon }> = [
-  { title: "시작", icon: Sparkles },
+  { title: "랜딩", icon: Sparkles },
+  { title: "개인정보 동의", icon: ShieldCheck },
+  { title: "AI 분석 동의", icon: FileCheck2 },
+  { title: "선택 동의", icon: Building2 },
   { title: "기본 정보", icon: UserRound },
   { title: "링크", icon: LinkIcon },
-  { title: "대표 프로젝트", icon: BriefcaseBusiness },
+  { title: "프로젝트", icon: BriefcaseBusiness },
+  { title: "협업 경험", icon: UsersRound },
   { title: "AI 질문", icon: MessageSquareText },
   { title: "답변", icon: ClipboardList },
   { title: "최종 확인", icon: CheckCircle2 },
@@ -137,6 +202,7 @@ function createProject(index: number): Project {
     name: "",
     url: "",
     github_url: "",
+    project_type: "",
     purpose: "",
     role: "",
     tech_stack: [],
@@ -148,10 +214,10 @@ function createProject(index: number): Project {
     deployment_experience: "",
     real_user_or_client: "",
     collaboration_people: "",
-    collaboration_type: "",
     difficulty: "",
     solution_process: "",
     result: "",
+    capacity_reason: "",
     ai_follow_up_answers: []
   };
 }
@@ -159,20 +225,39 @@ function createProject(index: number): Project {
 function createDefaultDraft(): CandidateDraft {
   return {
     candidate_basic_info: {
-      name: "",
+      name_or_nickname: "",
       email: "",
-      experience_level: ""
+      current_status: "",
+      preferred_work_type: [],
+      tech_stack: []
     },
     links: {
       github_url: "",
       portfolio_url: "",
       deployed_service_url: "",
-      linkedin_or_blog_url: ""
+      blog_url: "",
+      linkedin_url: ""
     },
-    tech_stack: [],
-    preferred_work_type: [],
-    projects: [createProject(0), createProject(1)],
+    projects: [createProject(0)],
+    collaboration_experience: {
+      pr_issue_code_review: "",
+      role_distribution: "",
+      requirement_change_response: "",
+      delay_or_error_communication: "",
+      non_developer_communication: "",
+      collaboration_difficulty_solution: ""
+    },
     raw_ai_follow_up_questions: []
+  };
+}
+
+function createDefaultConsent(): ConsentState {
+  return {
+    privacy_collection_required: false,
+    ai_analysis_required: false,
+    third_party_matching_optional: false,
+    marketing_optional: false,
+    consented_at: ""
   };
 }
 
@@ -195,20 +280,32 @@ function serializeQuestion(question: FollowUpQuestion) {
   return `${question.project_name}::${question.category}::${question.question}`;
 }
 
+function hasRequiredConsents(consent: ConsentState) {
+  return consent.privacy_collection_required && consent.ai_analysis_required;
+}
+
+function getConsentTimestamp(consent: ConsentState) {
+  return consent.consented_at || new Date().toISOString();
+}
+
 function buildCandidateProfile(draft: CandidateDraft) {
+  const aiFollowUpAnswers = draft.projects.flatMap((project, index) =>
+    project.ai_follow_up_answers.map((answer) => ({
+      project_name: projectDisplayName(project, index),
+      category: answer.category,
+      question: answer.question,
+      answer: answer.answer
+    }))
+  );
+
   return {
-    candidate_basic_info: {
-      name: draft.candidate_basic_info.name,
-      email: draft.candidate_basic_info.email,
-      experience_level: draft.candidate_basic_info.experience_level
-    },
+    candidate_basic_info: draft.candidate_basic_info,
     links: draft.links,
-    tech_stack: draft.tech_stack,
-    preferred_work_type: draft.preferred_work_type,
     projects: draft.projects.map((project) => ({
       name: project.name,
       url: project.url,
       github_url: project.github_url,
+      project_type: project.project_type,
       purpose: project.purpose,
       role: project.role,
       tech_stack: project.tech_stack,
@@ -220,17 +317,40 @@ function buildCandidateProfile(draft: CandidateDraft) {
       deployment_experience: project.deployment_experience,
       real_user_or_client: project.real_user_or_client,
       collaboration_people: project.collaboration_people,
-      collaboration_type: project.collaboration_type,
       difficulty: project.difficulty,
       solution_process: project.solution_process,
       result: project.result,
-      ai_follow_up_answers: project.ai_follow_up_answers.map((answer) => ({
-        category: answer.category,
-        question: answer.question,
-        answer: answer.answer
-      }))
+      capacity_reason: project.capacity_reason
     })),
-    raw_ai_follow_up_questions: draft.raw_ai_follow_up_questions
+    collaboration_experience: draft.collaboration_experience,
+    ai_follow_up_questions: draft.raw_ai_follow_up_questions,
+    ai_follow_up_answers: aiFollowUpAnswers
+  };
+}
+
+function buildConsentLog(consent: ConsentState): ConsentLog {
+  return {
+    privacy_collection_required: consent.privacy_collection_required,
+    ai_analysis_required: consent.ai_analysis_required,
+    third_party_matching_optional: consent.third_party_matching_optional,
+    marketing_optional: consent.marketing_optional,
+    consent_version: CONSENT_VERSION,
+    consented_at: getConsentTimestamp(consent),
+    policy_summary: {
+      retention_period: "수집일로부터 1년 또는 삭제 요청 시까지",
+      purpose: "풀스택 개발자 매칭 서비스 실험 및 후보자 데이터 구조화",
+      third_party_provision: "선택 동의한 경우에만 향후 기업 매칭 실험에 활용"
+    }
+  };
+}
+
+function submitCandidateProfile(
+  draft: CandidateDraft,
+  consent: ConsentState
+): SubmitResult {
+  return {
+    candidate_profile: buildCandidateProfile(draft),
+    consent_log: buildConsentLog(consent)
   };
 }
 
@@ -246,7 +366,6 @@ function mergeQuestionsIntoProjects(
       const relatedQuestions = questions.filter(
         (question) => question.project_name === displayName
       );
-
       const existingByKey = new Map(
         project.ai_follow_up_answers.map((answer) => [
           serializeQuestion(answer),
@@ -287,8 +406,7 @@ function Button({
       "bg-sky-700 text-white hover:bg-sky-800 disabled:bg-slate-300 disabled:text-slate-600",
     secondary:
       "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:text-slate-400",
-    ghost:
-      "text-slate-700 hover:bg-slate-100 disabled:text-slate-400",
+    ghost: "text-slate-700 hover:bg-slate-100 disabled:text-slate-400",
     danger:
       "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:text-red-300"
   };
@@ -312,15 +430,20 @@ function Button({
 function Field({
   label,
   children,
-  hint
+  hint,
+  required
 }: {
   label: string;
   children: React.ReactNode;
   hint?: string;
+  required?: boolean;
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-800">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-800">
+        {label}
+        {required ? <span className="text-red-600"> *</span> : null}
+      </span>
       {children}
       {hint ? <span className="mt-2 block text-xs text-slate-500">{hint}</span> : null}
     </label>
@@ -443,18 +566,57 @@ function TagList({ items }: { items: string[] }) {
   );
 }
 
+function ConsentCheckbox({
+  checked,
+  onChange,
+  label,
+  required
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="flex gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-900">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-700"
+      />
+      <span>
+        {label}
+        {required ? <span className="text-red-600"> (필수)</span> : null}
+      </span>
+    </label>
+  );
+}
+
 export default function CandidateIntakePage() {
   const [draft, setDraft] = useState<CandidateDraft>(() => createDefaultDraft());
+  const [consent, setConsent] = useState<ConsentState>(() => createDefaultConsent());
   const [activeStep, setActiveStep] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState("");
   const [fallbackUsed, setFallbackUsed] = useState(false);
+  const [stepError, setStepError] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [isSubmittingToSupabase, setIsSubmittingToSupabase] = useState(false);
+  const [databaseSubmitted, setDatabaseSubmitted] = useState(false);
+  const [databaseSubmissionId, setDatabaseSubmissionId] = useState("");
+  const [submissionError, setSubmissionError] = useState("");
 
   const candidateProfile = useMemo(() => buildCandidateProfile(draft), [draft]);
-  const jsonPreview = useMemo(
+  const consentLog = useMemo(() => buildConsentLog(consent), [consent]);
+  const candidateJsonPreview = useMemo(
     () => JSON.stringify(candidateProfile, null, 2),
     [candidateProfile]
+  );
+  const consentJsonPreview = useMemo(
+    () => JSON.stringify(consentLog, null, 2),
+    [consentLog]
   );
 
   useEffect(() => {
@@ -463,18 +625,19 @@ export default function CandidateIntakePage() {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved) as StoredState;
-        if (parsed?.draft?.projects?.length >= 2) {
-          restoredState = parsed;
-        }
+        restoredState = JSON.parse(saved) as StoredState;
       }
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
     }
 
     const timeout = window.setTimeout(() => {
-      if (restoredState) {
+      if (restoredState?.draft && restoredState?.consent) {
         setDraft(restoredState.draft);
+        setConsent(restoredState.consent);
+        setSubmitted(Boolean(restoredState.submitted));
+        setDatabaseSubmitted(Boolean(restoredState.database_submitted));
+        setDatabaseSubmissionId(restoredState.database_submission_id ?? "");
         setActiveStep(Math.min(restoredState.activeStep ?? 0, steps.length - 1));
       }
       setHydrated(true);
@@ -489,12 +652,45 @@ export default function CandidateIntakePage() {
     }
 
     const timeout = window.setTimeout(() => {
-      const state: StoredState = { activeStep, draft };
+      const state: StoredState = {
+        activeStep,
+        draft,
+        consent,
+        submitted,
+        database_submitted: databaseSubmitted,
+        database_submission_id: databaseSubmissionId
+      };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }, 250);
 
     return () => window.clearTimeout(timeout);
-  }, [activeStep, draft, hydrated]);
+  }, [
+    activeStep,
+    draft,
+    consent,
+    submitted,
+    databaseSubmitted,
+    databaseSubmissionId,
+    hydrated
+  ]);
+
+  function updateConsent<K extends keyof ConsentState>(
+    key: K,
+    value: ConsentState[K]
+  ) {
+    setConsent((current) => {
+      const next = {
+        ...current,
+        [key]: value
+      };
+
+      if (hasRequiredConsents(next) && !next.consented_at) {
+        next.consented_at = new Date().toISOString();
+      }
+
+      return next;
+    });
+  }
 
   function updateBasicInfo<K extends keyof CandidateBasicInfo>(
     key: K,
@@ -532,6 +728,19 @@ export default function CandidateIntakePage() {
     }));
   }
 
+  function updateCollaboration<K extends keyof CollaborationExperience>(
+    key: K,
+    value: CollaborationExperience[K]
+  ) {
+    setDraft((current) => ({
+      ...current,
+      collaboration_experience: {
+        ...current.collaboration_experience,
+        [key]: value
+      }
+    }));
+  }
+
   function addProject() {
     setDraft((current) => {
       if (current.projects.length >= 3) {
@@ -553,7 +762,7 @@ export default function CandidateIntakePage() {
 
   function removeProject(projectIndex: number) {
     setDraft((current) => {
-      if (current.projects.length <= 2) {
+      if (current.projects.length <= 1) {
         return current;
       }
 
@@ -593,7 +802,77 @@ export default function CandidateIntakePage() {
     }));
   }
 
+  function getStepValidationMessage(step: number) {
+    if (step === 1 && !consent.privacy_collection_required) {
+      return "개인정보 수집·이용 필수 동의가 필요합니다.";
+    }
+
+    if (step === 2 && !consent.ai_analysis_required) {
+      return "후보자 제출자료의 AI 분석 필수 동의가 필요합니다.";
+    }
+
+    if (step >= 4 && !hasRequiredConsents(consent)) {
+      return "필수 동의 2개가 체크되어야 후보자 입력 단계로 넘어갈 수 있습니다.";
+    }
+
+    if (step === 4) {
+      if (!draft.candidate_basic_info.name_or_nickname.trim()) {
+        return "이름 또는 닉네임을 입력해주세요.";
+      }
+      if (!draft.candidate_basic_info.email.trim()) {
+        return "이메일을 입력해주세요.";
+      }
+    }
+
+    if (step === 5 && !draft.links.github_url.trim()) {
+      return "GitHub URL을 입력해주세요.";
+    }
+
+    if (step === 6) {
+      if (draft.projects.length < 1) {
+        return "대표 프로젝트를 최소 1개 입력해주세요.";
+      }
+      if (!draft.projects.some((project) => project.name.trim())) {
+        return "대표 프로젝트명을 최소 1개 입력해주세요.";
+      }
+    }
+
+    if (step === 8 && draft.raw_ai_follow_up_questions.length === 0) {
+      return "AI 추가 질문을 생성한 뒤 다음 단계로 이동할 수 있습니다.";
+    }
+
+    return "";
+  }
+
+  function goToStep(targetStep: number) {
+    setStepError("");
+
+    if (targetStep >= 4 && !hasRequiredConsents(consent)) {
+      setStepError("필수 동의 2개가 체크되어야 후보자 입력 단계로 넘어갈 수 있습니다.");
+      setActiveStep(consent.privacy_collection_required ? 2 : 1);
+      return;
+    }
+
+    setActiveStep(Math.max(0, Math.min(targetStep, steps.length - 1)));
+  }
+
+  function goNext() {
+    const message = getStepValidationMessage(activeStep);
+    if (message) {
+      setStepError(message);
+      return;
+    }
+    setStepError("");
+    goToStep(activeStep + 1);
+  }
+
   async function generateFollowUps() {
+    const projectValidation = getStepValidationMessage(6);
+    if (projectValidation) {
+      setGenerationError(projectValidation);
+      return;
+    }
+
     setIsGenerating(true);
     setGenerationError("");
     setFallbackUsed(false);
@@ -606,8 +885,9 @@ export default function CandidateIntakePage() {
         },
         body: JSON.stringify({
           candidate_basic_info: draft.candidate_basic_info,
-          tech_stack: draft.tech_stack,
-          preferred_work_type: draft.preferred_work_type,
+          tech_stack: draft.candidate_basic_info.tech_stack,
+          preferred_work_type: draft.candidate_basic_info.preferred_work_type,
+          collaboration_experience: draft.collaboration_experience,
           projects: draft.projects.map((project, index) => ({
             ...project,
             name: projectDisplayName(project, index)
@@ -619,7 +899,6 @@ export default function CandidateIntakePage() {
         follow_up_questions?: FollowUpQuestion[];
         fallback_used?: boolean;
         error?: string;
-        detail?: string;
       };
 
       if (!response.ok || !Array.isArray(data.follow_up_questions)) {
@@ -634,7 +913,8 @@ export default function CandidateIntakePage() {
 
       setDraft((current) => mergeQuestionsIntoProjects(current, questions));
       setFallbackUsed(Boolean(data.fallback_used));
-      setActiveStep(5);
+      setStepError("");
+      setActiveStep(9);
     } catch (error) {
       setGenerationError(
         error instanceof Error ? error.message : "추가 질문 생성 중 오류가 발생했습니다."
@@ -644,29 +924,97 @@ export default function CandidateIntakePage() {
     }
   }
 
-  function downloadJson() {
-    const blob = new Blob([jsonPreview], {
+  function downloadJson(filename: string, content: string) {
+    const blob = new Blob([content], {
       type: "application/json;charset=utf-8"
     });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "candidate_profile.json";
+    anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
   }
 
+  async function submitToSupabase(nextConsent: ConsentState) {
+    setIsSubmittingToSupabase(true);
+    setSubmissionError("");
+
+    try {
+      const payload = submitCandidateProfile(draft, nextConsent);
+      const response = await fetch("/api/submit-candidate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = (await response.json()) as {
+        success?: boolean;
+        id?: string | number;
+        error?: string;
+        detail?: string;
+      };
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.detail
+            ? `${data.error || "후보자 제출 정보를 저장하지 못했습니다."} ${data.detail}`
+            : data.error || "후보자 제출 정보를 저장하지 못했습니다."
+        );
+      }
+
+      setDatabaseSubmitted(true);
+      setDatabaseSubmissionId(data.id ? String(data.id) : "");
+      setSubmissionError("");
+    } catch (error) {
+      setDatabaseSubmitted(false);
+      setSubmissionError(
+        error instanceof Error
+          ? error.message
+          : "후보자 제출 정보를 저장하는 중 오류가 발생했습니다."
+      );
+    } finally {
+      setIsSubmittingToSupabase(false);
+    }
+  }
+
+  async function handleSubmit() {
+    const basicValidation = getStepValidationMessage(4);
+    const linkValidation = getStepValidationMessage(5);
+    const projectValidation = getStepValidationMessage(6);
+    const consentValidation = !hasRequiredConsents(consent)
+      ? "필수 동의 2개가 체크되어야 제출할 수 있습니다."
+      : "";
+    const message = consentValidation || basicValidation || linkValidation || projectValidation;
+
+    if (message) {
+      setStepError(message);
+      return;
+    }
+
+    const nextConsent = {
+      ...consent,
+      consented_at: getConsentTimestamp(consent)
+    };
+    setConsent(nextConsent);
+    setSubmitted(true);
+    setStepError("");
+    setActiveStep(11);
+    await submitToSupabase(nextConsent);
+  }
+
   const progressPercent = Math.round(((activeStep + 1) / steps.length) * 100);
-  const canProceed = activeStep !== 4 || draft.raw_ai_follow_up_questions.length > 0;
+  const canGoNext = activeStep < steps.length - 1;
 
   return (
     <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <header className="mb-5 flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-sky-800">Workerate MVP</p>
+            <p className="text-sm font-semibold text-sky-800">Workerate Experiment</p>
             <h1 className="mt-1 text-xl font-bold text-slate-950 sm:text-2xl">
-              풀스택 개발자 후보자 데이터 수집
+              풀스택 개발자 후보자 데이터 수집 및 개인정보 동의 폼
             </h1>
           </div>
           <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
@@ -688,23 +1036,25 @@ export default function CandidateIntakePage() {
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {steps.map((step, index) => {
               const Icon = step.icon;
               const selected = index === activeStep;
               const completed = index < activeStep;
+              const locked = index >= 4 && !hasRequiredConsents(consent);
               return (
                 <button
                   key={step.title}
                   type="button"
-                  onClick={() => setActiveStep(index)}
+                  onClick={() => goToStep(index)}
                   className={classNames(
                     "flex min-h-12 items-center gap-2 rounded-md border px-3 py-2 text-left text-xs font-semibold transition",
                     selected
                       ? "border-sky-700 bg-sky-50 text-sky-900"
                       : completed
                         ? "border-teal-200 bg-teal-50 text-teal-900"
-                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                    locked && "opacity-60"
                   )}
                 >
                   <Icon aria-hidden className="h-4 w-4 shrink-0" />
@@ -715,24 +1065,43 @@ export default function CandidateIntakePage() {
           </div>
         </nav>
 
+        {stepError ? (
+          <div className="mb-4 flex gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            <AlertCircle aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{stepError}</p>
+          </div>
+        ) : null}
+
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft sm:p-7">
-          {activeStep === 0 ? (
-            <StartStep onStart={() => setActiveStep(1)} />
-          ) : null}
+          {activeStep === 0 ? <LandingStep onStart={() => goToStep(1)} /> : null}
 
           {activeStep === 1 ? (
-            <BasicInfoStep
-              draft={draft}
-              updateBasicInfo={updateBasicInfo}
-              setDraft={setDraft}
+            <PrivacyConsentStep
+              checked={consent.privacy_collection_required}
+              onChange={(checked) => updateConsent("privacy_collection_required", checked)}
             />
           ) : null}
 
           {activeStep === 2 ? (
-            <LinksStep links={draft.links} updateLinks={updateLinks} />
+            <AiConsentStep
+              checked={consent.ai_analysis_required}
+              onChange={(checked) => updateConsent("ai_analysis_required", checked)}
+            />
           ) : null}
 
           {activeStep === 3 ? (
+            <OptionalConsentStep consent={consent} updateConsent={updateConsent} />
+          ) : null}
+
+          {activeStep === 4 ? (
+            <BasicInfoStep draft={draft} updateBasicInfo={updateBasicInfo} />
+          ) : null}
+
+          {activeStep === 5 ? (
+            <LinksStep links={draft.links} updateLinks={updateLinks} />
+          ) : null}
+
+          {activeStep === 6 ? (
             <ProjectsStep
               projects={draft.projects}
               addProject={addProject}
@@ -741,7 +1110,14 @@ export default function CandidateIntakePage() {
             />
           ) : null}
 
-          {activeStep === 4 ? (
+          {activeStep === 7 ? (
+            <CollaborationStep
+              collaboration={draft.collaboration_experience}
+              updateCollaboration={updateCollaboration}
+            />
+          ) : null}
+
+          {activeStep === 8 ? (
             <GenerateQuestionsStep
               draft={draft}
               isGenerating={isGenerating}
@@ -751,122 +1127,419 @@ export default function CandidateIntakePage() {
             />
           ) : null}
 
-          {activeStep === 5 ? (
+          {activeStep === 9 ? (
             <AnswerQuestionsStep
               draft={draft}
               updateFollowUpAnswer={updateFollowUpAnswer}
             />
           ) : null}
 
-          {activeStep === 6 ? <ReviewStep draft={draft} /> : null}
+          {activeStep === 10 ? (
+            <ReviewStep
+              draft={draft}
+              consent={consent}
+              handleSubmit={handleSubmit}
+              isSubmittingToSupabase={isSubmittingToSupabase}
+            />
+          ) : null}
 
-          {activeStep === 7 ? (
-            <ExportStep jsonPreview={jsonPreview} downloadJson={downloadJson} />
+          {activeStep === 11 ? (
+            <ExportStep
+              submitted={submitted}
+              databaseSubmitted={databaseSubmitted}
+              databaseSubmissionId={databaseSubmissionId}
+              submissionError={submissionError}
+              isSubmittingToSupabase={isSubmittingToSupabase}
+              candidateJsonPreview={candidateJsonPreview}
+              consentJsonPreview={consentJsonPreview}
+              submitToSupabase={handleSubmit}
+              downloadCandidate={() =>
+                downloadJson("candidate_profile.json", candidateJsonPreview)
+              }
+              downloadConsent={() => downloadJson("consent_log.json", consentJsonPreview)}
+            />
           ) : null}
         </section>
 
-        {activeStep > 0 ? (
-          <footer className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              type="button"
-              variant="secondary"
-              icon={ArrowLeft}
-              onClick={() => setActiveStep((step) => Math.max(step - 1, 0))}
-            >
-              이전
-            </Button>
-            <Button
-              type="button"
-              icon={ArrowRight}
-              disabled={!canProceed || activeStep === steps.length - 1}
-              onClick={() =>
-                setActiveStep((step) => Math.min(step + 1, steps.length - 1))
-              }
-            >
-              다음
-            </Button>
-          </footer>
-        ) : null}
+        <footer className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs leading-5 text-slate-500">{DELETE_REQUEST_TEXT}</p>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
+            {activeStep > 0 ? (
+              <Button
+                type="button"
+                variant="secondary"
+                icon={ArrowLeft}
+                onClick={() => goToStep(activeStep - 1)}
+              >
+                이전
+              </Button>
+            ) : null}
+            {activeStep === 10 ? (
+              <Button
+                type="button"
+                icon={isSubmittingToSupabase ? Loader2 : Send}
+                onClick={handleSubmit}
+                disabled={isSubmittingToSupabase}
+              >
+                {isSubmittingToSupabase ? "제출 중" : "제출하기"}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                icon={ArrowRight}
+                disabled={!canGoNext}
+                onClick={goNext}
+              >
+                다음
+              </Button>
+            )}
+          </div>
+        </footer>
       </div>
     </main>
   );
 }
 
-function StartStep({ onStart }: { onStart: () => void }) {
+function LandingStep({ onStart }: { onStart: () => void }) {
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-center">
+    <div className="grid gap-8 lg:grid-cols-[1fr_340px] lg:items-start">
       <div>
         <SectionTitle
-          eyebrow="Candidate Intake"
-          title="매칭 전, 후보자 정보를 분석 가능한 JSON으로 정리합니다."
-          description="이 첫 MVP의 목적은 풀스택 개발자 후보자의 GitHub, 포트폴리오, 대표 프로젝트, 협업 경험, 문제 해결 경험을 구조화된 데이터로 수집하는 것입니다."
+          eyebrow="Community Intake"
+          title="풀스택 개발자 매칭 서비스 실험 참여자 모집"
+          description="Workerate는 풀스택 개발자의 GitHub, 포트폴리오, 프로젝트 경험을 바탕으로 기업의 업무조건과 후보자의 실제 업무 경험을 더 정확히 연결하는 매칭 시스템을 실험하고 있습니다."
         />
-        <div className="grid gap-3 text-sm leading-6 text-slate-700 sm:grid-cols-3">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <p className="font-bold text-slate-950">비정형 입력</p>
-            <p className="mt-2">프로젝트 설명과 경험을 단계별 폼으로 받습니다.</p>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <p className="font-bold text-slate-950">AI 추가 질문</p>
-            <p className="mt-2">부족한 맥락을 보완하기 위한 질문만 생성합니다.</p>
-          </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <p className="font-bold text-slate-950">JSON Export</p>
-            <p className="mt-2">최종 결과를 candidate_profile.json으로 저장합니다.</p>
+        <div className="space-y-4 text-sm leading-6 text-slate-700">
+          <p>
+            현재 단계에서는 채용 합격/탈락을 판단하지 않습니다. 입력된 정보는
+            후보자의 개발 경험을 구조화하고, 향후 업무적합도 분석 모델을 개선하기
+            위한 목적으로만 사용됩니다.
+          </p>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+            본 폼은 자발적 참여 기반입니다. 제출 전 개인정보 수집·이용 및 AI 분석
+            동의를 확인해주세요.
+          </p>
+        </div>
+        <div className="mt-6">
+          <h2 className="text-base font-bold text-slate-950">참여 대상</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {[
+              "풀스택 개발자",
+              "프론트엔드와 백엔드를 모두 다뤄본 개발자",
+              "GitHub 또는 포트폴리오가 있는 개발자",
+              "MVP 제작, SaaS 개발, 웹서비스 개발 경험이 있는 개발자",
+              "프리랜서 또는 외주 프로젝트 경험이 있는 개발자"
+            ].map((item) => (
+              <div key={item} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-800">{item}</p>
+              </div>
+            ))}
           </div>
         </div>
-        <p className="mt-5 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-          현재 버전은 분석을 위한 데이터 수집만 다룹니다. 매칭 점수, 합격 가능성,
-          사람에 대한 평가는 포함하지 않습니다.
-        </p>
         <Button type="button" icon={ArrowRight} className="mt-6" onClick={onStart}>
-          시작하기
+          동의 확인하고 시작하기
         </Button>
       </div>
       <div className="rounded-lg border border-sky-100 bg-sky-50 p-5">
         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-white text-sky-800 shadow-sm">
           <FileJson aria-hidden className="h-6 w-6" />
         </div>
-        <p className="text-sm font-bold text-sky-950">최종 산출물</p>
-        <pre className="mt-3 overflow-hidden rounded-md bg-white p-4 text-xs leading-5 text-slate-700">
-{`{
-  "candidate_basic_info": {},
-  "projects": [],
-  "raw_ai_follow_up_questions": []
-}`}
-        </pre>
+        <p className="text-sm font-bold text-sky-950">생성되는 JSON</p>
+        <div className="mt-3 space-y-3 text-sm leading-6 text-slate-700">
+          <p>candidate_profile: 후보자가 직접 제출한 경험 데이터</p>
+          <p>consent_log: 필수/선택 동의 기록</p>
+          <p className="text-xs text-slate-500">
+            현재 DB 저장은 하지 않으며 localStorage와 JSON Export만 사용합니다.
+          </p>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function PrivacyConsentStep({
+  checked,
+  onChange
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div>
+      <SectionTitle
+        title="[필수] 개인정보 수집·이용 동의"
+        description="Workerate는 풀스택 개발자 매칭 서비스 실험을 위해 아래와 같이 개인정보를 수집·이용합니다."
+      />
+      <ConsentTextGrid
+        sections={[
+          {
+            title: "수집·이용 목적",
+            items: [
+              "풀스택 개발자 후보자 데이터 수집",
+              "후보자의 프로젝트 경험 및 기술역량 구조화",
+              "업무적합도 분석 및 매칭 시스템 실험",
+              "후보자 입력자료 기반 AI 추가 질문 생성",
+              "서비스 개선을 위한 비식별 통계 분석"
+            ]
+          },
+          {
+            title: "필수 항목",
+            items: [
+              "이름 또는 닉네임",
+              "이메일",
+              "GitHub URL",
+              "주요 기술스택",
+              "희망 업무 유형",
+              "대표 프로젝트 설명",
+              "프로젝트별 본인 역할",
+              "구현 기능",
+              "문제 해결 경험",
+              "배포 경험",
+              "협업 경험"
+            ]
+          },
+          {
+            title: "선택 항목",
+            items: [
+              "포트폴리오 URL",
+              "배포 서비스 URL",
+              "블로그 또는 LinkedIn URL",
+              "프리랜서/외주 경험",
+              "프로젝트 성과 또는 사용자 피드백"
+            ]
+          },
+          {
+            title: "수집하지 않는 항목",
+            items: [
+              "나이",
+              "성별",
+              "얼굴 사진",
+              "주소",
+              "출신지역",
+              "결혼 여부",
+              "가족관계",
+              "건강정보",
+              "종교",
+              "정치성향",
+              "장애 여부",
+              "기타 직무와 무관한 민감정보"
+            ]
+          }
+        ]}
+      />
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <InfoPanel
+          title="보유 및 이용 기간"
+          text="수집일로부터 1년까지 보유하며, 참여자가 삭제를 요청할 경우 지체 없이 삭제합니다. 서비스 정식 출시 전 별도 동의를 받지 않는 한 기업 제공에는 사용하지 않습니다."
+        />
+        <InfoPanel
+          title="동의 거부권"
+          text="개인정보 수집·이용 동의를 거부할 수 있습니다. 다만 필수 항목 수집에 동의하지 않을 경우 본 실험 참여 및 데이터 분석이 제한될 수 있습니다."
+        />
+      </div>
+      <div className="mt-6">
+        <ConsentCheckbox
+          checked={checked}
+          onChange={onChange}
+          label="위 개인정보 수집·이용에 동의합니다."
+          required
+        />
+      </div>
+    </div>
+  );
+}
+
+function AiConsentStep({
+  checked,
+  onChange
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div>
+      <SectionTitle
+        title="[필수] 후보자 제출자료의 AI 분석 동의"
+        description="Workerate는 후보자가 제출한 GitHub URL, 프로젝트 설명, 포트폴리오 정보, 기술스택, 문제 해결 경험, 협업 경험을 AI로 분석하여 구조화된 후보자 프로필을 생성합니다."
+      />
+      <div className="grid gap-5 md:grid-cols-2">
+        <ConsentTextGrid
+          sections={[
+            {
+              title: "AI 분석 목적",
+              items: [
+                "프로젝트 경험에서 확인 가능한 기술역량 정리",
+                "풀스택 개발 범위 확인",
+                "문제 해결 과정 구조화",
+                "협업 및 커뮤니케이션 경험 정리",
+                "추가 확인이 필요한 항목 도출",
+                "업무적합도 분석 모델 개선"
+              ]
+            }
+          ]}
+          compact
+        />
+        <ConsentTextGrid
+          sections={[
+            {
+              title: "AI가 하지 않는 것",
+              items: [
+                "합격/불합격 판단",
+                "인성 단정",
+                "성격 평가",
+                "민감정보 추론",
+                "나이, 성별, 외모, 출신지역 등 차별 가능 정보 기반 분석",
+                "후보자 몰래 기업에 정보 제공"
+              ]
+            }
+          ]}
+          compact
+        />
+      </div>
+      <p className="mt-5 rounded-lg border border-sky-100 bg-sky-50 p-4 text-sm leading-6 text-sky-950">
+        AI 분석 결과는 실험 및 서비스 개선 목적으로 사용됩니다. 추후 기업 매칭에
+        활용할 경우 별도의 동의를 다시 받습니다.
+      </p>
+      <div className="mt-6">
+        <ConsentCheckbox
+          checked={checked}
+          onChange={onChange}
+          label="후보자 제출자료의 AI 분석에 동의합니다."
+          required
+        />
+      </div>
+    </div>
+  );
+}
+
+function OptionalConsentStep({
+  consent,
+  updateConsent
+}: {
+  consent: ConsentState;
+  updateConsent: <K extends keyof ConsentState>(key: K, value: ConsentState[K]) => void;
+}) {
+  return (
+    <div>
+      <SectionTitle
+        title="선택 동의"
+        description="아래 항목은 선택입니다. 선택하지 않아도 데이터 수집 실험 참여는 가능합니다."
+      />
+      <div className="space-y-5">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
+          <h2 className="text-lg font-bold text-slate-950">
+            [선택] 기업 매칭 활용 및 제3자 제공 동의
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-slate-700">
+            현재 단계에서는 입력된 정보를 기업에 제공하지 않습니다. 향후 실제 매칭
+            실험을 진행할 경우, 후보자가 별도로 동의한 경우에만 기업에게 제한된
+            후보자 프로필이 제공될 수 있습니다.
+          </p>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <InfoPanel
+              title="제공 가능 항목"
+              text="이름 또는 닉네임, 이메일 또는 연락 가능한 수단, GitHub/포트폴리오 URL, 주요 기술스택, 대표 프로젝트 요약, 업무적합도 분석 요약, 추가 확인이 필요한 항목"
+            />
+            <InfoPanel
+              title="제공받는 자와 목적"
+              text="향후 Workerate와 매칭 실험에 참여하는 기업 또는 프로젝트 의뢰자에게 프로젝트 매칭, 후보자 검토, 제안 및 연락 목적으로 제공될 수 있습니다."
+            />
+            <InfoPanel
+              title="보유 기간"
+              text="매칭 검토 종료 후 6개월 또는 후보자 삭제 요청 시까지입니다."
+            />
+          </div>
+          <div className="mt-4">
+            <ConsentCheckbox
+              checked={consent.third_party_matching_optional}
+              onChange={(checked) =>
+                updateConsent("third_party_matching_optional", checked)
+              }
+              label="향후 실제 매칭 실험 시 기업 제공에 동의합니다."
+            />
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
+          <h2 className="text-lg font-bold text-slate-950">
+            [선택] 후속 실험 및 서비스 소식 수신 동의
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-slate-700">
+            Workerate의 후속 테스트, 인터뷰 요청, 베타 서비스 안내를 이메일로 받을
+            수 있습니다.
+          </p>
+          <div className="mt-4">
+            <ConsentCheckbox
+              checked={consent.marketing_optional}
+              onChange={(checked) => updateConsent("marketing_optional", checked)}
+              label="후속 실험 및 서비스 안내를 이메일로 받겠습니다."
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConsentTextGrid({
+  sections,
+  compact
+}: {
+  sections: Array<{ title: string; items: string[] }>;
+  compact?: boolean;
+}) {
+  return (
+    <div className={classNames("grid gap-4", compact ? "grid-cols-1" : "md:grid-cols-2")}>
+      {sections.map((section) => (
+        <div key={section.title} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <h2 className="text-sm font-bold text-slate-950">{section.title}</h2>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+            {section.items.map((item) => (
+              <li key={item}>- {item}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InfoPanel({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <h3 className="text-sm font-bold text-slate-950">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-700">{text}</p>
     </div>
   );
 }
 
 function BasicInfoStep({
   draft,
-  updateBasicInfo,
-  setDraft
+  updateBasicInfo
 }: {
   draft: CandidateDraft;
   updateBasicInfo: <K extends keyof CandidateBasicInfo>(
     key: K,
     value: CandidateBasicInfo[K]
   ) => void;
-  setDraft: React.Dispatch<React.SetStateAction<CandidateDraft>>;
 }) {
   return (
     <div>
       <SectionTitle
-        title="기본 정보 입력"
-        description="후보자 분석용 데이터에 필요한 최소 기본 정보만 입력합니다. 나이, 성별, 외모, 출신지역, 결혼 여부, 가족관계는 수집하지 않습니다."
+        title="후보자 기본 정보 입력"
+        description="후보자가 직접 제출하는 정보만 수집합니다. 나이, 성별, 외모, 출신지역, 결혼 여부, 가족관계, 건강정보, 종교, 정치성향 등 직무와 무관하거나 민감한 정보는 입력받지 않습니다."
       />
       <div className="grid gap-5 md:grid-cols-2">
-        <Field label="이름">
+        <Field label="이름 또는 닉네임" required>
           <TextInput
-            value={draft.candidate_basic_info.name}
-            onChange={(event) => updateBasicInfo("name", event.target.value)}
-            placeholder="홍길동"
+            value={draft.candidate_basic_info.name_or_nickname}
+            onChange={(event) =>
+              updateBasicInfo("name_or_nickname", event.target.value)
+            }
+            placeholder="예: workerate-dev"
           />
         </Field>
-        <Field label="이메일">
+        <Field label="이메일" required>
           <TextInput
             type="email"
             value={draft.candidate_basic_info.email}
@@ -874,13 +1547,13 @@ function BasicInfoStep({
             placeholder="name@example.com"
           />
         </Field>
-        <Field label="경력 수준">
+        <Field label="현재 상태">
           <SelectInput
-            value={draft.candidate_basic_info.experience_level}
-            onChange={(event) => updateBasicInfo("experience_level", event.target.value)}
+            value={draft.candidate_basic_info.current_status}
+            onChange={(event) => updateBasicInfo("current_status", event.target.value)}
           >
             <option value="">선택해주세요</option>
-            {experienceOptions.map((option) => (
+            {currentStatusOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
@@ -889,33 +1562,22 @@ function BasicInfoStep({
         </Field>
         <Field
           label="주요 기술스택"
-          hint={`예: ${techExamples.join(", ")}`}
+          hint={`쉼표 또는 줄바꿈으로 입력하세요. 예: ${techExamples.join(", ")}`}
         >
           <TextArea
-            value={listToText(draft.tech_stack)}
+            value={listToText(draft.candidate_basic_info.tech_stack)}
             onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                tech_stack: parseList(event.target.value)
-              }))
+              updateBasicInfo("tech_stack", parseList(event.target.value))
             }
-            placeholder="React, Next.js, Node.js, PostgreSQL"
+            placeholder="React, Next.js, TypeScript, Node.js, PostgreSQL"
           />
         </Field>
         <div className="md:col-span-2">
-          <Field
-            label="희망 업무 유형"
-            hint="여러 개를 선택할 수 있습니다."
-          >
+          <Field label="희망 업무 유형" hint="여러 개를 선택할 수 있습니다.">
             <MultiSelectPills
               options={preferredWorkOptions}
-              value={draft.preferred_work_type}
-              onChange={(next) =>
-                setDraft((current) => ({
-                  ...current,
-                  preferred_work_type: next
-                }))
-              }
+              value={draft.candidate_basic_info.preferred_work_type}
+              onChange={(next) => updateBasicInfo("preferred_work_type", next)}
             />
           </Field>
         </div>
@@ -934,11 +1596,11 @@ function LinksStep({
   return (
     <div>
       <SectionTitle
-        title="링크 입력"
-        description="후보자의 작업물을 확인할 수 있는 공개 링크를 입력합니다. 없는 항목은 비워둘 수 있습니다."
+        title="GitHub 및 포트폴리오 링크 입력"
+        description="GitHub URL은 필수입니다. 나머지 링크는 후보자가 공개 가능한 항목만 입력합니다."
       />
       <div className="grid gap-5 md:grid-cols-2">
-        <Field label="GitHub URL">
+        <Field label="GitHub URL" required>
           <TextInput
             value={links.github_url}
             onChange={(event) => updateLinks("github_url", event.target.value)}
@@ -959,11 +1621,18 @@ function LinksStep({
             placeholder="https://service.example.com"
           />
         </Field>
-        <Field label="LinkedIn 또는 블로그 URL">
+        <Field label="기술 블로그 URL">
           <TextInput
-            value={links.linkedin_or_blog_url}
-            onChange={(event) => updateLinks("linkedin_or_blog_url", event.target.value)}
-            placeholder="https://linkedin.com/in/... 또는 블로그 주소"
+            value={links.blog_url}
+            onChange={(event) => updateLinks("blog_url", event.target.value)}
+            placeholder="https://blog.example.com"
+          />
+        </Field>
+        <Field label="LinkedIn URL">
+          <TextInput
+            value={links.linkedin_url}
+            onChange={(event) => updateLinks("linkedin_url", event.target.value)}
+            placeholder="https://linkedin.com/in/..."
           />
         </Field>
       </div>
@@ -991,7 +1660,7 @@ function ProjectsStep({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <SectionTitle
           title="대표 프로젝트 입력"
-          description="대표 프로젝트는 최소 2개, 최대 3개까지 입력합니다. 분석을 위한 데이터 수집이므로 가능한 한 본인의 역할과 구현 범위를 구체적으로 적어주세요."
+          description="대표 프로젝트는 최소 1개, 최대 3개까지 입력합니다. 분석을 위한 데이터 구조화가 목적이므로 본인의 역할과 구현 범위를 구체적으로 적어주세요."
         />
         <Button
           type="button"
@@ -1020,14 +1689,14 @@ function ProjectsStep({
                 variant="danger"
                 icon={Trash2}
                 onClick={() => removeProject(projectIndex)}
-                disabled={projects.length <= 2}
+                disabled={projects.length <= 1}
               >
                 삭제
               </Button>
             </div>
 
             <div className="grid gap-5 md:grid-cols-2">
-              <Field label="프로젝트 이름">
+              <Field label="프로젝트명" required>
                 <TextInput
                   value={project.name}
                   onChange={(event) =>
@@ -1054,11 +1723,11 @@ function ProjectsStep({
                   placeholder="https://github.com/..."
                 />
               </Field>
-              <Field label="프로젝트가 가까운 유형">
+              <Field label="프로젝트 유형">
                 <SelectInput
-                  value={project.collaboration_type}
+                  value={project.project_type}
                   onChange={(event) =>
-                    updateProject(projectIndex, "collaboration_type", event.target.value)
+                    updateProject(projectIndex, "project_type", event.target.value)
                   }
                 >
                   <option value="">선택해주세요</option>
@@ -1109,7 +1778,7 @@ function ProjectsStep({
                   placeholder="회원가입, 결제, 예약 캘린더, 관리자 대시보드"
                 />
               </Field>
-              <Field label="프론트엔드에서 담당한 부분">
+              <Field label="프론트엔드 담당 범위">
                 <TextArea
                   value={project.frontend_scope}
                   onChange={(event) =>
@@ -1117,7 +1786,7 @@ function ProjectsStep({
                   }
                 />
               </Field>
-              <Field label="백엔드/API에서 담당한 부분">
+              <Field label="백엔드/API 담당 범위">
                 <TextArea
                   value={project.backend_scope}
                   onChange={(event) =>
@@ -1133,7 +1802,7 @@ function ProjectsStep({
                   }
                 />
               </Field>
-              <Field label="인증/권한 구현 여부">
+              <Field label="인증/권한 구현 경험">
                 <TextArea
                   value={project.auth_experience}
                   onChange={(event) =>
@@ -1142,7 +1811,7 @@ function ProjectsStep({
                   placeholder="예: JWT, OAuth, Supabase Auth, 관리자 권한"
                 />
               </Field>
-              <Field label="배포 경험">
+              <Field label="배포/운영 경험">
                 <TextArea
                   value={project.deployment_experience}
                   onChange={(event) =>
@@ -1198,7 +1867,7 @@ function ProjectsStep({
                 </Field>
               </div>
               <div className="md:col-span-2">
-                <Field label="그 문제를 어떻게 해결했는지">
+                <Field label="문제 해결 과정">
                   <TextArea
                     value={project.solution_process}
                     onChange={(event) =>
@@ -1208,9 +1877,93 @@ function ProjectsStep({
                   />
                 </Field>
               </div>
+              <div className="md:col-span-2">
+                <Field label="이 프로젝트가 본인의 역량을 보여준다고 생각하는 이유">
+                  <TextArea
+                    value={project.capacity_reason}
+                    onChange={(event) =>
+                      updateProject(projectIndex, "capacity_reason", event.target.value)
+                    }
+                    placeholder="본인의 기술적 판단, 구현 범위, 문제 해결 방식이 드러나는 지점을 적어주세요."
+                  />
+                </Field>
+              </div>
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function CollaborationStep({
+  collaboration,
+  updateCollaboration
+}: {
+  collaboration: CollaborationExperience;
+  updateCollaboration: <K extends keyof CollaborationExperience>(
+    key: K,
+    value: CollaborationExperience[K]
+  ) => void;
+}) {
+  return (
+    <div>
+      <SectionTitle
+        title="협업 경험 입력"
+        description="협업 방식과 커뮤니케이션 경험을 구조화합니다. 사람 자체에 대한 평가는 하지 않습니다."
+      />
+      <div className="grid gap-5 md:grid-cols-2">
+        <Field label="PR/이슈/코드리뷰 경험 여부">
+          <TextArea
+            value={collaboration.pr_issue_code_review}
+            onChange={(event) =>
+              updateCollaboration("pr_issue_code_review", event.target.value)
+            }
+          />
+        </Field>
+        <Field label="팀원과 역할을 나눈 경험">
+          <TextArea
+            value={collaboration.role_distribution}
+            onChange={(event) =>
+              updateCollaboration("role_distribution", event.target.value)
+            }
+          />
+        </Field>
+        <Field label="요구사항이 바뀌었을 때 대응한 경험">
+          <TextArea
+            value={collaboration.requirement_change_response}
+            onChange={(event) =>
+              updateCollaboration("requirement_change_response", event.target.value)
+            }
+          />
+        </Field>
+        <Field label="일정 지연 또는 오류 발생 시 공유한 경험">
+          <TextArea
+            value={collaboration.delay_or_error_communication}
+            onChange={(event) =>
+              updateCollaboration("delay_or_error_communication", event.target.value)
+            }
+          />
+        </Field>
+        <Field label="비개발자와 소통한 경험">
+          <TextArea
+            value={collaboration.non_developer_communication}
+            onChange={(event) =>
+              updateCollaboration("non_developer_communication", event.target.value)
+            }
+          />
+        </Field>
+        <Field label="협업에서 어려웠던 점과 해결 방식">
+          <TextArea
+            value={collaboration.collaboration_difficulty_solution}
+            onChange={(event) =>
+              updateCollaboration(
+                "collaboration_difficulty_solution",
+                event.target.value
+              )
+            }
+          />
+        </Field>
       </div>
     </div>
   );
@@ -1233,7 +1986,7 @@ function GenerateQuestionsStep({
     <div>
       <SectionTitle
         title="AI 추가 질문 생성"
-        description="대표 프로젝트 입력 내용을 바탕으로 분석용 데이터에 부족한 맥락을 보완하는 질문을 생성합니다."
+        description="기본 정보와 프로젝트 데이터를 입력한 뒤 기존 /api/generate-followups를 사용해 부족한 정보를 확인합니다."
       />
       <div className="grid gap-4 md:grid-cols-3">
         {draft.projects.map((project, index) => (
@@ -1247,8 +2000,9 @@ function GenerateQuestionsStep({
       </div>
       <div className="mt-6 rounded-lg border border-sky-100 bg-sky-50 p-4">
         <p className="text-sm leading-6 text-sky-950">
-          생성되는 질문은 본인 기여도, 풀스택 구현 범위, 문제 해결 과정, 배포/운영,
-          협업, 요구사항 이해와 커뮤니케이션을 더 명확히 하기 위한 항목입니다.
+          추가 질문은 본인 기여도 명확화, 실제 풀스택 범위 확인, 문제 해결 과정
+          확인, 배포/운영 경험 확인, 협업 경험 확인, 요구사항 이해와 커뮤니케이션
+          확인 범주를 포함합니다.
         </p>
       </div>
       {generationError ? (
@@ -1290,7 +2044,7 @@ function AnswerQuestionsStep({
     <div>
       <SectionTitle
         title="AI 추가 질문 답변"
-        description="각 질문 아래에 후보자의 답변을 입력합니다. 답변은 해당 프로젝트 데이터에 함께 저장됩니다."
+        description="각 질문 아래에 후보자의 답변을 입력합니다. 답변은 최종 candidate_profile JSON에 포함됩니다."
       />
       {draft.raw_ai_follow_up_questions.length === 0 ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -1343,53 +2097,81 @@ function AnswerQuestionsStep({
   );
 }
 
-function ReviewStep({ draft }: { draft: CandidateDraft }) {
+function ReviewStep({
+  draft,
+  consent,
+  handleSubmit,
+  isSubmittingToSupabase
+}: {
+  draft: CandidateDraft;
+  consent: ConsentState;
+  handleSubmit: () => void | Promise<void>;
+  isSubmittingToSupabase: boolean;
+}) {
   return (
     <div>
-      <SectionTitle
-        title="최종 확인"
-        description="수집된 데이터를 사람이 읽기 쉬운 형태로 확인합니다. 이 화면은 평가가 아니라 입력 누락과 구조화를 확인하기 위한 단계입니다."
-      />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <SectionTitle
+          title="최종 제출 전 확인"
+          description="수집된 데이터와 동의 상태를 확인합니다. 현재 DB가 없으므로 실제 서버 저장은 하지 않고 JSON 생성만 수행합니다."
+        />
+        <Button
+          type="button"
+          icon={isSubmittingToSupabase ? Loader2 : Send}
+          onClick={handleSubmit}
+          disabled={isSubmittingToSupabase}
+          className="shrink-0"
+        >
+          {isSubmittingToSupabase ? "제출 중" : "제출하기"}
+        </Button>
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-2">
+        <SummaryBlock title="동의 상태">
+          <SummaryRow
+            label="개인정보 수집·이용 필수 동의"
+            value={consent.privacy_collection_required ? "동의" : "미동의"}
+          />
+          <SummaryRow
+            label="AI 분석 필수 동의"
+            value={consent.ai_analysis_required ? "동의" : "미동의"}
+          />
+          <SummaryRow
+            label="기업 매칭 활용 및 제3자 제공 선택 동의"
+            value={consent.third_party_matching_optional ? "동의" : "미동의"}
+          />
+          <SummaryRow
+            label="후속 실험 및 서비스 안내 수신 선택 동의"
+            value={consent.marketing_optional ? "동의" : "미동의"}
+          />
+        </SummaryBlock>
+
         <SummaryBlock title="기본 정보">
-          <SummaryRow label="이름" value={draft.candidate_basic_info.name} />
+          <SummaryRow
+            label="이름 또는 닉네임"
+            value={draft.candidate_basic_info.name_or_nickname}
+          />
           <SummaryRow label="이메일" value={draft.candidate_basic_info.email} />
           <SummaryRow
-            label="경력 수준"
-            value={draft.candidate_basic_info.experience_level}
+            label="현재 상태"
+            value={draft.candidate_basic_info.current_status}
           />
           <SummaryRow
             label="희망 업무 유형"
-            value={draft.preferred_work_type.join(", ")}
+            value={draft.candidate_basic_info.preferred_work_type.join(", ")}
           />
         </SummaryBlock>
 
         <SummaryBlock title="주요 기술스택">
-          <TagList items={draft.tech_stack} />
+          <TagList items={draft.candidate_basic_info.tech_stack} />
         </SummaryBlock>
 
         <SummaryBlock title="링크">
           <SummaryRow label="GitHub" value={draft.links.github_url} />
           <SummaryRow label="포트폴리오" value={draft.links.portfolio_url} />
           <SummaryRow label="배포 서비스" value={draft.links.deployed_service_url} />
-          <SummaryRow label="LinkedIn/블로그" value={draft.links.linkedin_or_blog_url} />
-        </SummaryBlock>
-
-        <SummaryBlock title="AI 추가 질문 답변">
-          <SummaryRow
-            label="생성 질문 수"
-            value={`${draft.raw_ai_follow_up_questions.length}개`}
-          />
-          <SummaryRow
-            label="답변 수"
-            value={`${draft.projects.reduce(
-              (sum, project) =>
-                sum +
-                project.ai_follow_up_answers.filter((answer) => answer.answer.trim())
-                  .length,
-              0
-            )}개`}
-          />
+          <SummaryRow label="기술 블로그" value={draft.links.blog_url} />
+          <SummaryRow label="LinkedIn" value={draft.links.linkedin_url} />
         </SummaryBlock>
       </div>
 
@@ -1401,9 +2183,9 @@ function ReviewStep({ draft }: { draft: CandidateDraft }) {
             </h2>
             <div className="mt-4 grid gap-5 lg:grid-cols-2">
               <SummaryBlock title="대표 프로젝트">
+                <SummaryRow label="유형" value={project.project_type} />
                 <SummaryRow label="목적" value={project.purpose} />
                 <SummaryRow label="역할" value={project.role} />
-                <SummaryRow label="유형" value={project.collaboration_type} />
                 <SummaryRow label="실제 사용자/고객" value={project.real_user_or_client} />
                 <SummaryRow label="성과" value={project.result} />
               </SummaryBlock>
@@ -1412,41 +2194,67 @@ function ReviewStep({ draft }: { draft: CandidateDraft }) {
                 <SummaryRow label="백엔드/API" value={project.backend_scope} />
                 <SummaryRow label="DB" value={project.database_scope} />
                 <SummaryRow label="인증/권한" value={project.auth_experience} />
-                <SummaryRow label="배포" value={project.deployment_experience} />
-              </SummaryBlock>
-              <SummaryBlock title="협업 경험">
-                <SummaryRow label="협업 인원" value={project.collaboration_people} />
-                <SummaryRow label="프로젝트 유형" value={project.collaboration_type} />
+                <SummaryRow label="배포/운영" value={project.deployment_experience} />
               </SummaryBlock>
               <SummaryBlock title="문제 해결 사례">
                 <SummaryRow label="어려웠던 문제" value={project.difficulty} />
                 <SummaryRow label="해결 과정" value={project.solution_process} />
+                <SummaryRow label="역량을 보여주는 이유" value={project.capacity_reason} />
+              </SummaryBlock>
+              <SummaryBlock title="AI 추가 질문 답변">
+                <SummaryRow
+                  label="답변 수"
+                  value={`${project.ai_follow_up_answers.filter((answer) => answer.answer.trim()).length}개`}
+                />
               </SummaryBlock>
             </div>
-            {project.ai_follow_up_answers.length > 0 ? (
-              <div className="mt-5">
-                <h3 className="mb-3 text-sm font-bold text-slate-800">
-                  AI 추가 질문 답변
-                </h3>
-                <div className="space-y-3">
-                  {project.ai_follow_up_answers.map((answer) => (
-                    <div
-                      key={serializeQuestion(answer)}
-                      className="rounded-md bg-slate-50 p-3 text-sm"
-                    >
-                      <p className="font-semibold text-slate-900">
-                        {answer.category} · {answer.question}
-                      </p>
-                      <p className="mt-2 leading-6 text-slate-600">
-                        {answer.answer || "답변 없음"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </div>
         ))}
+      </div>
+
+      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+        <SummaryBlock title="협업 경험">
+          <SummaryRow
+            label="PR/이슈/코드리뷰"
+            value={draft.collaboration_experience.pr_issue_code_review}
+          />
+          <SummaryRow
+            label="역할 분담"
+            value={draft.collaboration_experience.role_distribution}
+          />
+          <SummaryRow
+            label="요구사항 변경 대응"
+            value={draft.collaboration_experience.requirement_change_response}
+          />
+          <SummaryRow
+            label="일정 지연/오류 공유"
+            value={draft.collaboration_experience.delay_or_error_communication}
+          />
+          <SummaryRow
+            label="비개발자 소통"
+            value={draft.collaboration_experience.non_developer_communication}
+          />
+          <SummaryRow
+            label="협업 어려움과 해결"
+            value={draft.collaboration_experience.collaboration_difficulty_solution}
+          />
+        </SummaryBlock>
+        <SummaryBlock title="AI 추가 질문">
+          <SummaryRow
+            label="생성 질문 수"
+            value={`${draft.raw_ai_follow_up_questions.length}개`}
+          />
+          <SummaryRow
+            label="전체 답변 수"
+            value={`${draft.projects.reduce(
+              (sum, project) =>
+                sum +
+                project.ai_follow_up_answers.filter((answer) => answer.answer.trim())
+                  .length,
+              0
+            )}개`}
+          />
+        </SummaryBlock>
       </div>
     </div>
   );
@@ -1479,26 +2287,89 @@ function SummaryRow({ label, value }: { label: string; value?: string }) {
 }
 
 function ExportStep({
-  jsonPreview,
-  downloadJson
+  submitted,
+  databaseSubmitted,
+  databaseSubmissionId,
+  submissionError,
+  isSubmittingToSupabase,
+  candidateJsonPreview,
+  consentJsonPreview,
+  submitToSupabase,
+  downloadCandidate,
+  downloadConsent
 }: {
-  jsonPreview: string;
-  downloadJson: () => void;
+  submitted: boolean;
+  databaseSubmitted: boolean;
+  databaseSubmissionId: string;
+  submissionError: string;
+  isSubmittingToSupabase: boolean;
+  candidateJsonPreview: string;
+  consentJsonPreview: string;
+  submitToSupabase: () => void | Promise<void>;
+  downloadCandidate: () => void;
+  downloadConsent: () => void;
 }) {
   return (
     <div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <SectionTitle
-          title="JSON Export"
-          description="아래 미리보기는 candidate_profile.json으로 다운로드되는 최종 데이터입니다."
+          title={databaseSubmitted ? "제출이 완료되었습니다" : submitted ? "JSON이 생성되었습니다" : "JSON Export"}
+          description="candidate_profile JSON과 consent_log JSON을 별도로 다운로드할 수 있으며, 제출하기 버튼으로 Supabase candidate_submissions 테이블에 저장할 수 있습니다."
         />
-        <Button type="button" icon={Download} onClick={downloadJson} className="shrink-0">
-          JSON 다운로드
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            icon={isSubmittingToSupabase ? Loader2 : Send}
+            onClick={submitToSupabase}
+            disabled={isSubmittingToSupabase}
+            className="shrink-0"
+          >
+            {isSubmittingToSupabase ? "제출 중" : databaseSubmitted ? "다시 제출하기" : "제출하기"}
+          </Button>
+          <Button
+            type="button"
+            icon={Download}
+            onClick={downloadCandidate}
+            className="shrink-0"
+          >
+            candidate_profile 다운로드
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            icon={Download}
+            onClick={downloadConsent}
+            className="shrink-0"
+          >
+            consent_log 다운로드
+          </Button>
+        </div>
       </div>
-      <pre className="max-h-[560px] overflow-auto rounded-lg border border-slate-200 bg-slate-950 p-4 text-xs leading-5 text-slate-100">
-        {jsonPreview}
-      </pre>
+      {databaseSubmitted ? (
+        <div className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          제출이 완료되었습니다.
+          {databaseSubmissionId ? ` 제출 ID: ${databaseSubmissionId}` : null}
+        </div>
+      ) : null}
+      {submissionError ? (
+        <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {submissionError}
+        </div>
+      ) : null}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div>
+          <h2 className="mb-2 text-sm font-bold text-slate-950">candidate_profile</h2>
+          <pre className="max-h-[560px] overflow-auto rounded-lg border border-slate-200 bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+            {candidateJsonPreview}
+          </pre>
+        </div>
+        <div>
+          <h2 className="mb-2 text-sm font-bold text-slate-950">consent_log</h2>
+          <pre className="max-h-[560px] overflow-auto rounded-lg border border-slate-200 bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+            {consentJsonPreview}
+          </pre>
+        </div>
+      </div>
     </div>
   );
 }
