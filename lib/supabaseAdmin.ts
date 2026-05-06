@@ -1,17 +1,28 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 
+function getRequiredEnv(name: string) {
+  const rawValue = process.env[name];
+
+  if (typeof rawValue !== "string") {
+    throw new Error(`${name} is not configured.`);
+  }
+
+  const value = rawValue
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/[\r\n]/g, "");
+
+  if (!value || value === "undefined" || value === "null") {
+    throw new Error(`${name} is not configured.`);
+  }
+
+  return value;
+}
+
 export function createSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL is not configured.");
-  }
-
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured.");
-  }
+  const supabaseUrl = getRequiredEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
 
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {

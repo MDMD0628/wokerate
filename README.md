@@ -37,16 +37,30 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 이 프로젝트는 Cloudflare Workers + OpenNext 방식으로 배포할 수 있도록 설정되어 있습니다.
 
+Next.js 16은 기본 빌드가 Turbopack으로 동작할 수 있어 OpenNext/Cloudflare Worker 런타임에서 chunk loading 문제가 생길 수 있습니다. 이 프로젝트는 `next build --webpack`을 사용해 Webpack 기반 빌드를 강제합니다.
+
 ```bash
+npm.cmd run build
 npm.cmd run preview
 npm.cmd run deploy
 npm.cmd run cf-typegen
 ```
 
+Windows PowerShell 환경에서는 OpenNext build가 동작하더라도 런타임 또는 파일 경로 이슈가 생길 수 있습니다. Cloudflare 배포 검증은 WSL 환경에서 실행하는 것을 권장합니다.
+
 배포 설정 파일:
 
 - `open-next.config.ts`
 - `wrangler.jsonc`
+
+`wrangler.jsonc`는 Workers 런타임을 위해 `nodejs_compat`를 사용하고, `.open-next/worker.js`와 `.open-next/assets`를 기준으로 배포합니다. API Route가 있으므로 `output: "export"`는 사용하지 않습니다.
+
+로컬 Cloudflare build 안정화를 위해 루트 `.env`에는 아래 값만 둘 수 있습니다. 이 파일은 git에 커밋하지 않습니다.
+
+```env
+WRANGLER_BUILD_CONDITIONS=""
+WRANGLER_BUILD_PLATFORM="node"
+```
 
 Cloudflare에는 아래 환경변수를 코드에 커밋하지 말고 Dashboard 또는 Wrangler secret으로 등록합니다.
 

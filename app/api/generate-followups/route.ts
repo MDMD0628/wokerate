@@ -34,6 +34,25 @@ const categories = [
   "요구사항 이해와 커뮤니케이션"
 ];
 
+function getOptionalEnv(name: string) {
+  const rawValue = process.env[name];
+
+  if (typeof rawValue !== "string") {
+    return "";
+  }
+
+  const value = rawValue
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/[\r\n]/g, "");
+
+  if (!value || value === "undefined" || value === "null") {
+    return "";
+  }
+
+  return value;
+}
+
 function safeProjectName(project: ProjectPayload, index: number) {
   const trimmed = project.name?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : `대표 프로젝트 ${index + 1}`;
@@ -136,7 +155,10 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    const openAiApiKey = getOptionalEnv("OPENAI_API_KEY");
+    const openAiModel = getOptionalEnv("OPENAI_MODEL") || "gpt-4o-mini";
+
+    if (!openAiApiKey) {
       return NextResponse.json({
         follow_up_questions: createFallbackQuestions(projects),
         fallback_used: true
@@ -146,11 +168,11 @@ export async function POST(request: Request) {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${openAiApiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+        model: openAiModel,
         response_format: { type: "json_object" },
         temperature: 0.2,
         messages: [
@@ -179,6 +201,15 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const detail = await response.text();
+
+      if (detail.includes("unsupported_country_region_territory")) {
+        return NextResponse.json({
+          follow_up_questions: createFallbackQuestions(projects),
+          fallback_used: true,
+          fallback_reason: "openai_unavailable_from_worker_region"
+        });
+      }
+
       return NextResponse.json(
         {
           error: "OpenAI API 요청에 실패했습니다.",

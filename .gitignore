@@ -4,6 +4,7 @@ node_modules
 .wrangler
 out
 dist
+.env
 .env*.local
 .dev.vars
 cloudflare-env.d.ts
