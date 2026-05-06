@@ -33,6 +33,45 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 `SUPABASE_SERVICE_ROLE_KEY`는 클라이언트 컴포넌트에서 import하지 않습니다. 공개 저장소에는 `.env.local.example`만 올리고, 실제 값은 `.env.local` 또는 배포 환경변수에만 넣어야 합니다.
 
+## Cloudflare Workers 배포
+
+이 프로젝트는 Cloudflare Workers + OpenNext 방식으로 배포할 수 있도록 설정되어 있습니다.
+
+```bash
+npm.cmd run preview
+npm.cmd run deploy
+npm.cmd run cf-typegen
+```
+
+배포 설정 파일:
+
+- `open-next.config.ts`
+- `wrangler.jsonc`
+
+Cloudflare에는 아래 환경변수를 코드에 커밋하지 말고 Dashboard 또는 Wrangler secret으로 등록합니다.
+
+```bash
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put OPENAI_MODEL
+npx wrangler secret put NEXT_PUBLIC_SUPABASE_URL
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+```
+
+Cloudflare Dashboard를 사용할 경우:
+
+`Workers & Pages` -> `workerate` -> `Settings` -> `Variables and Secrets`
+
+등록해야 하는 값:
+
+```env
+OPENAI_API_KEY=
+OPENAI_MODEL=
+NEXT_PUBLIC_SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+`SUPABASE_SERVICE_ROLE_KEY`는 서버 라우트에서만 사용합니다. `.env.local`, `.dev.vars`, Cloudflare secret에는 실제 값을 넣을 수 있지만 공개 저장소에는 커밋하지 않습니다.
+
 ## 포함된 기능
 
 - 커뮤니티 유입용 랜딩 페이지
