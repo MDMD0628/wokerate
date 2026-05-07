@@ -407,6 +407,21 @@ function createDefaultConsent(): ConsentState {
   };
 }
 
+function normalizeConsent(savedConsent?: Partial<ConsentState>): ConsentState {
+  const defaultConsent = createDefaultConsent();
+
+  return {
+    ...defaultConsent,
+    ...savedConsent,
+    privacy_collection_required: savedConsent?.privacy_collection_required === true,
+    ai_analysis_required: savedConsent?.ai_analysis_required === true,
+    third_party_matching_optional:
+      savedConsent?.third_party_matching_optional === true,
+    marketing_optional: savedConsent?.marketing_optional === true,
+    consented_at: savedConsent?.consented_at || ""
+  };
+}
+
 function parseList(value: string) {
   return value
     .split(/[\n,]/)
@@ -490,6 +505,27 @@ function summarizeWorkSampleAnswer(answer: WorkSampleAnswer) {
   }
 
   return trimmed.length > 140 ? `${trimmed.slice(0, 140).trim()}...` : trimmed;
+}
+
+function getSafeRestoredStep(
+  restoredStep: number,
+  restoredDraft: CandidateDraft,
+  restoredConsent: ConsentState
+) {
+  const boundedStep = Math.max(0, Math.min(restoredStep, steps.length - 1));
+
+  if (boundedStep >= 4 && !hasRequiredConsents(restoredConsent)) {
+    return restoredConsent.privacy_collection_required ? 2 : 1;
+  }
+
+  if (
+    boundedStep > WORK_SAMPLE_STEP_INDEX &&
+    getWorkSampleValidationMessage(restoredDraft.work_sample_test)
+  ) {
+    return WORK_SAMPLE_STEP_INDEX;
+  }
+
+  return boundedStep;
 }
 
 function buildCandidateProfile(draft: CandidateDraft) {
@@ -854,16 +890,22 @@ export default function CandidateIntakePage() {
     const timeout = window.setTimeout(() => {
       if (restoredState?.draft && restoredState?.consent) {
         const restoredDraft = normalizeDraft(restoredState.draft);
+        const restoredConsent = normalizeConsent(restoredState.consent);
+        const restoredActiveStep = getSafeRestoredStep(
+          restoredState.activeStep ?? 0,
+          restoredDraft,
+          restoredConsent
+        );
         setDraft(
-          restoredState.activeStep === WORK_SAMPLE_STEP_INDEX
+          restoredActiveStep === WORK_SAMPLE_STEP_INDEX
             ? ensureWorkSampleStarted(restoredDraft)
             : restoredDraft
         );
-        setConsent(restoredState.consent);
+        setConsent(restoredConsent);
         setSubmitted(Boolean(restoredState.submitted));
         setDatabaseSubmitted(Boolean(restoredState.database_submitted));
         setDatabaseSubmissionId(restoredState.database_submission_id ?? "");
-        setActiveStep(Math.min(restoredState.activeStep ?? 0, steps.length - 1));
+        setActiveStep(restoredActiveStep);
       }
       setHydrated(true);
     }, 0);
@@ -1552,7 +1594,8 @@ function LandingStep({ onStart }: { onStart: () => void }) {
           <p>candidate_profile: 후보자가 직접 제출한 경험 데이터</p>
           <p>consent_log: 필수/선택 동의 기록</p>
           <p className="text-xs text-slate-500">
-            현재 DB 저장은 하지 않으며 localStorage와 JSON Export만 사용합니다.
+            입력 중에는 localStorage에 자동 저장되고, 최종 제출 시 Supabase 저장을
+            시도합니다.
           </p>
         </div>
       </div>

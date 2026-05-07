@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import {
+  checkRateLimit,
+  readJsonWithLimit,
+  rejectCrossOriginRequest
+} from "../../../lib/requestGuards";
 
 type ProjectPayload = {
   name?: string;
@@ -25,6 +30,18 @@ type FollowUpQuestion = {
   question: string;
 };
 
+type FollowUpRequestPayload = {
+  candidate_basic_info?: unknown;
+  tech_stack?: unknown;
+  preferred_work_type?: unknown;
+  projects?: unknown;
+};
+
+const MAX_FOLLOWUP_BODY_BYTES = 256 * 1024;
+const MAX_TEXT_FIELD_LENGTH = 1600;
+const MAX_LIST_ITEMS = 20;
+const MAX_LIST_ITEM_LENGTH = 120;
+
 const categories = [
   "본인 기여도",
   "풀스택 범위",
@@ -33,6 +50,10 @@ const categories = [
   "협업 경험",
   "요구사항 이해와 커뮤니케이션"
 ];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function getOptionalEnv(name: string) {
   const rawValue = process.env[name];
@@ -51,6 +72,78 @@ function getOptionalEnv(name: string) {
   }
 
   return value;
+}
+
+function trimText(value: unknown, maxLength = MAX_TEXT_FIELD_LENGTH) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().slice(0, maxLength);
+}
+
+function trimStringList(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => trimText(item, MAX_LIST_ITEM_LENGTH))
+    .filter(Boolean)
+    .slice(0, MAX_LIST_ITEMS);
+}
+
+function sanitizeCandidateBasicInfo(value: unknown) {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return {
+    current_status: trimText(value.current_status, 120),
+    preferred_work_type: trimStringList(value.preferred_work_type),
+    tech_stack: trimStringList(value.tech_stack)
+  };
+}
+
+function sanitizeProject(value: unknown): ProjectPayload | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const project: ProjectPayload = {
+    name: trimText(value.name, 160),
+    purpose: trimText(value.purpose),
+    role: trimText(value.role),
+    tech_stack: trimStringList(value.tech_stack),
+    implemented_features: trimStringList(value.implemented_features),
+    frontend_scope: trimText(value.frontend_scope),
+    backend_scope: trimText(value.backend_scope),
+    database_scope: trimText(value.database_scope),
+    auth_experience: trimText(value.auth_experience),
+    deployment_experience: trimText(value.deployment_experience),
+    real_user_or_client: trimText(value.real_user_or_client),
+    collaboration_people: trimText(value.collaboration_people, 160),
+    collaboration_type: trimText(value.collaboration_type, 160),
+    difficulty: trimText(value.difficulty),
+    solution_process: trimText(value.solution_process),
+    result: trimText(value.result)
+  };
+
+  const hasMeaningfulInput = [
+    project.name,
+    project.purpose,
+    project.role,
+    project.frontend_scope,
+    project.backend_scope,
+    project.database_scope,
+    project.difficulty,
+    project.solution_process,
+    project.result,
+    ...(project.tech_stack ?? []),
+    ...(project.implemented_features ?? [])
+  ].some((item) => item && item.length > 0);
+
+  return hasMeaningfulInput ? project : null;
 }
 
 function safeProjectName(project: ProjectPayload, index: number) {
@@ -139,14 +232,36 @@ function normalizeQuestions(value: unknown): FollowUpQuestion[] {
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as {
-      candidate_basic_info?: unknown;
-      tech_stack?: unknown;
-      preferred_work_type?: unknown;
-      projects?: ProjectPayload[];
-    };
+    const originError = rejectCrossOriginRequest(request);
+    if (originError) {
+      return originError;
+    }
 
-    const projects = Array.isArray(payload.projects) ? payload.projects.slice(0, 3) : [];
+    const rateLimitError = checkRateLimit(request, {
+      bucket: "generate-followups",
+      limit: 12,
+      windowMs: 10 * 60 * 1000
+    });
+    if (rateLimitError) {
+      return rateLimitError;
+    }
+
+    const payloadResult = await readJsonWithLimit<FollowUpRequestPayload>(
+      request,
+      MAX_FOLLOWUP_BODY_BYTES
+    );
+    if (payloadResult.response) {
+      return payloadResult.response;
+    }
+
+    const payload = payloadResult.data;
+
+    const projects = Array.isArray(payload.projects)
+      ? payload.projects
+          .map(sanitizeProject)
+          .filter((project): project is ProjectPayload => Boolean(project))
+          .slice(0, 3)
+      : [];
 
     if (projects.length === 0) {
       return NextResponse.json(
@@ -157,6 +272,9 @@ export async function POST(request: Request) {
 
     const openAiApiKey = getOptionalEnv("OPENAI_API_KEY");
     const openAiModel = getOptionalEnv("OPENAI_MODEL") || "gpt-4o-mini";
+    const candidateBasicInfo = sanitizeCandidateBasicInfo(payload.candidate_basic_info);
+    const techStack = trimStringList(payload.tech_stack);
+    const preferredWorkType = trimStringList(payload.preferred_work_type);
 
     if (!openAiApiKey) {
       return NextResponse.json({
@@ -186,17 +304,19 @@ export async function POST(request: Request) {
             content: JSON.stringify({
               instruction:
                 "각 대표 프로젝트별로 부족한 정보를 보완할 추가 질문을 4~6개 생성해줘. 질문 유형은 본인 기여도, 실제 풀스택 범위, 문제 해결 과정, 배포/운영 경험, 협업 경험, 요구사항 이해와 커뮤니케이션을 균형 있게 포함한다. 출력 형식은 {\"follow_up_questions\":[{\"project_name\":\"\",\"category\":\"\",\"question\":\"\"}]}만 사용한다.",
-              candidate_basic_info: payload.candidate_basic_info,
-              tech_stack: payload.tech_stack,
-              preferred_work_type: payload.preferred_work_type,
+              candidate_basic_info: candidateBasicInfo,
+              tech_stack: techStack,
+              preferred_work_type: preferredWorkType,
               projects: projects.map((project, index) => ({
                 ...project,
                 name: safeProjectName(project, index)
               }))
             })
           }
-        ]
-      })
+        ],
+        max_tokens: 1200
+      }),
+      signal: AbortSignal.timeout(20_000)
     });
 
     if (!response.ok) {

@@ -60,6 +60,8 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 `SUPABASE_SERVICE_ROLE_KEY`는 클라이언트 컴포넌트에서 import하지 않습니다. 공개 저장소에는 `.env.local.example`만 올리고, 실제 값은 `.env.local` 또는 배포 환경변수에만 넣어야 합니다.
 
+`/api/submit-candidate`는 서버에서도 필수 동의, 이메일, GitHub URL, 대표 프로젝트, 실무 테스트 필수 답변을 다시 검증합니다. 요청 본문 크기 제한, same-origin 브라우저 요청 확인, 기본 rate limit도 적용합니다.
+
 ## Cloudflare Workers 배포
 
 이 프로젝트는 Cloudflare Workers + OpenNext 방식으로 배포할 수 있도록 설정되어 있습니다.
@@ -129,6 +131,7 @@ ADMIN_ACCESS_KEY=
 - 실무 시나리오 테스트 분석 루브릭 및 내부 검토 페이지
 - localStorage 자동 저장
 - `/api/generate-followups` API Route 기반 추가 질문 생성
+- 공개 API Route 요청 크기 제한 및 기본 rate limit
 - AI 추가 질문 답변 저장
 - 최종 요약 확인
 - `candidate_profile.json` 다운로드

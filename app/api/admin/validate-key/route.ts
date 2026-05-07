@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import {
+  checkRateLimit,
+  readJsonWithLimit,
+  rejectCrossOriginRequest
+} from "../../../../lib/requestGuards";
 
 function normalizeKey(value: string | undefined) {
   return value?.trim().replace(/^["']|["']$/g, "") ?? "";
@@ -6,7 +11,29 @@ function normalizeKey(value: string | undefined) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { access_key?: unknown };
+    const originError = rejectCrossOriginRequest(request);
+    if (originError) {
+      return originError;
+    }
+
+    const rateLimitError = checkRateLimit(request, {
+      bucket: "admin-validate-key",
+      limit: 10,
+      windowMs: 10 * 60 * 1000
+    });
+    if (rateLimitError) {
+      return rateLimitError;
+    }
+
+    const bodyResult = await readJsonWithLimit<{ access_key?: unknown }>(
+      request,
+      4 * 1024
+    );
+    if (bodyResult.response) {
+      return bodyResult.response;
+    }
+
+    const body = bodyResult.data;
     const submittedKey =
       typeof body.access_key === "string" ? body.access_key.trim() : "";
     const configuredKey = normalizeKey(process.env.ADMIN_ACCESS_KEY);
