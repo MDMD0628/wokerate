@@ -18,6 +18,17 @@ ADMIN_ACCESS_KEY=your_admin_access_key
 
 테스트 답변은 `candidate_profile.work_sample_test`에 저장됩니다. 최종 제출 시 기존 `/api/submit-candidate`를 통해 Supabase `candidate_submissions.candidate_profile` JSONB 안에 함께 저장됩니다.
 
+## 실무 테스트 분석 루브릭
+
+실무 시나리오 테스트 분석 루브릭이 추가되었습니다. 현재 단계에서는 AI 분석을 수행하지 않고, 향후 AI가 일관된 기준으로 답변을 분석하기 위한 기준표와 리포트 출력 구조만 준비합니다.
+
+- 루브릭 파일: `lib/workSampleRubric.ts`
+- 분석 리포트 타입: `lib/workSampleAnalysisTypes.ts`
+- 빈 리포트 초안 생성: `lib/createEmptyWorkSampleAnalysisReport.ts`
+- 내부 검토 페이지: `/admin/work-sample-rubric`
+
+루브릭은 채용 여부 결정이나 사람 자체에 대한 단정이 아니라, 업무상황 답변에서 확인 가능한 근거를 분류하기 위한 기준입니다.
+
 ## 실행
 
 ```bash
@@ -115,6 +126,7 @@ ADMIN_ACCESS_KEY=
 - 대표 프로젝트 최소 1개, 최대 3개 입력
 - 협업 경험 입력
 - MVP 제작형 실무 시나리오 테스트 답변 저장
+- 실무 시나리오 테스트 분석 루브릭 및 내부 검토 페이지
 - localStorage 자동 저장
 - `/api/generate-followups` API Route 기반 추가 질문 생성
 - AI 추가 질문 답변 저장
