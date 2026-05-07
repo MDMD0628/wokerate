@@ -2,6 +2,22 @@
 
 풀스택 개발자 후보자가 자발적으로 참여해 개인정보 수집·이용 및 AI 분석에 동의한 뒤, GitHub, 포트폴리오, 프로젝트 경험, 협업 경험, 문제 해결 경험을 분석 가능한 JSON으로 구조화하는 첫 MVP입니다.
 
+## 관리자 리포트 초안
+
+관리자 리포트 초안 화면은 공개 후보자 입력 폼과 분리된 `/admin/reports` 경로에서 확인합니다. 현재 단계에서는 Supabase 데이터를 자동 조회하지 않고, `candidate_profile` JSON을 붙여넣어 표준 리포트 양식과 미리보기를 검증합니다.
+
+```bash
+ADMIN_ACCESS_KEY=your_admin_access_key
+```
+
+`ADMIN_ACCESS_KEY`는 서버의 `/api/admin/validate-key` Route에서만 비교합니다. Cloudflare 배포 시에는 코드에 하드코딩하지 말고 Dashboard 변수 또는 Wrangler secret으로 등록합니다.
+
+## 실무 시나리오 테스트
+
+후보자 입력 흐름에 MVP 제작형 풀스택 개발자를 위한 업무상황 기반 테스트가 추가되었습니다. 이 테스트는 코딩 실력을 단정하기 위한 시험이 아니라, 비개발 의뢰자의 요구사항을 이해하고 기능 우선순위를 정하며 리스크 커뮤니케이션과 인수인계 준비 방식을 수집하기 위한 기능입니다.
+
+테스트 답변은 `candidate_profile.work_sample_test`에 저장됩니다. 최종 제출 시 기존 `/api/submit-candidate`를 통해 Supabase `candidate_submissions.candidate_profile` JSONB 안에 함께 저장됩니다.
+
 ## 실행
 
 ```bash
@@ -69,6 +85,7 @@ npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put OPENAI_MODEL
 npx wrangler secret put NEXT_PUBLIC_SUPABASE_URL
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler secret put ADMIN_ACCESS_KEY
 ```
 
 Cloudflare Dashboard를 사용할 경우:
@@ -82,6 +99,7 @@ OPENAI_API_KEY=
 OPENAI_MODEL=
 NEXT_PUBLIC_SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+ADMIN_ACCESS_KEY=
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY`는 서버 라우트에서만 사용합니다. `.env.local`, `.dev.vars`, Cloudflare secret에는 실제 값을 넣을 수 있지만 공개 저장소에는 커밋하지 않습니다.
@@ -96,6 +114,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 - 단계별 후보자 데이터 입력
 - 대표 프로젝트 최소 1개, 최대 3개 입력
 - 협업 경험 입력
+- MVP 제작형 실무 시나리오 테스트 답변 저장
 - localStorage 자동 저장
 - `/api/generate-followups` API Route 기반 추가 질문 생성
 - AI 추가 질문 답변 저장
@@ -104,4 +123,4 @@ SUPABASE_SERVICE_ROLE_KEY=
 - `consent_log.json` 다운로드
 - Supabase `candidate_submissions` 테이블 저장
 
-현재 버전은 localStorage와 JSON Export를 유지하면서, 환경변수가 설정된 경우 Supabase 저장도 사용할 수 있습니다. 채용 합격/탈락, 사람에 대한 평가, 기업 제공 기능은 포함하지 않습니다.
+현재 버전은 localStorage와 JSON Export를 유지하면서, 환경변수가 설정된 경우 Supabase 저장도 사용할 수 있습니다. 채용 여부 결정, 사람 자체에 대한 단정, 기업 제공 기능은 포함하지 않습니다.

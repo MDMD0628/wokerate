@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { WorkSampleAnswer, WorkSampleTest } from "../lib/workSampleTypes";
 
 type CandidateBasicInfo = {
   name_or_nickname: string;
@@ -91,6 +92,7 @@ type CandidateDraft = {
   links: CandidateLinks;
   projects: Project[];
   collaboration_experience: CollaborationExperience;
+  work_sample_test: WorkSampleTest;
   raw_ai_follow_up_questions: FollowUpQuestion[];
 };
 
@@ -190,10 +192,67 @@ const steps: Array<{ title: string; icon: LucideIcon }> = [
   { title: "링크", icon: LinkIcon },
   { title: "프로젝트", icon: BriefcaseBusiness },
   { title: "협업 경험", icon: UsersRound },
+  { title: "실무 테스트", icon: ClipboardList },
   { title: "AI 질문", icon: MessageSquareText },
-  { title: "답변", icon: ClipboardList },
+  { title: "답변", icon: FileCheck2 },
   { title: "최종 확인", icon: CheckCircle2 },
   { title: "JSON Export", icon: FileJson }
+];
+
+const WORK_SAMPLE_STEP_INDEX = 8;
+const AI_QUESTIONS_STEP_INDEX = 9;
+const AI_ANSWERS_STEP_INDEX = 10;
+const REVIEW_STEP_INDEX = 11;
+const EXPORT_STEP_INDEX = 12;
+
+const requiredWorkSampleQuestionIds = [
+  "requirement_understanding",
+  "mvp_prioritization",
+  "risk_communication",
+  "handover_readiness"
+];
+
+const workSampleQuestions: Array<Pick<WorkSampleAnswer, "question_id" | "question">> = [
+  {
+    question_id: "requirement_understanding",
+    question:
+      "의뢰자의 요구사항을 읽고, 당신이 이해한 프로젝트 목표를 정리해주세요. 추가로 의뢰자에게 꼭 확인해야 할 질문도 적어주세요."
+  },
+  {
+    question_id: "mvp_prioritization",
+    question:
+      "4주 안에 MVP를 만든다고 가정했을 때, 꼭 먼저 구현해야 할 기능과 나중으로 미뤄도 되는 기능을 나눠주세요. 그렇게 나눈 이유도 설명해주세요."
+  },
+  {
+    question_id: "technical_structuring",
+    question:
+      "이 서비스를 만든다면 프론트엔드, 백엔드/API, DB는 각각 어떤 구조가 필요하다고 보나요? 너무 전문적인 코드가 아니라, 의뢰자도 이해할 수 있는 수준으로 설명해주세요."
+  },
+  {
+    question_id: "work_plan",
+    question:
+      "4주 동안 어떤 순서로 작업을 진행하겠습니까? 주차별 또는 단계별로 작업 계획을 작성해주세요."
+  },
+  {
+    question_id: "risk_communication",
+    question:
+      "개발 중 결제 기능 구현이 예상보다 지연된다고 가정해봅시다. 비개발 의뢰자에게 현재 상황, 대안, 일정 영향을 어떻게 설명하겠습니까? 실제 메시지처럼 작성해주세요."
+  },
+  {
+    question_id: "problem_solving",
+    question:
+      "예약 시간이 중복으로 잡히는 버그가 발생했다고 가정해봅시다. 문제 원인을 어떤 순서로 확인하고 해결하겠습니까?"
+  },
+  {
+    question_id: "handover_readiness",
+    question:
+      "프로젝트가 끝난 뒤 의뢰자가 유지보수나 인수인계를 받을 수 있도록 어떤 자료를 남기겠습니까? README, 환경변수, 계정, 배포, DB 구조 등을 고려해 작성해주세요."
+  },
+  {
+    question_id: "process_reflection",
+    question:
+      "이 테스트를 풀면서 어떤 순서로 생각했는지, 가장 중요하게 판단한 기준은 무엇이었는지 적어주세요."
+  }
 ];
 
 function createProject(index: number): Project {
@@ -222,6 +281,25 @@ function createProject(index: number): Project {
   };
 }
 
+function createDefaultWorkSampleTest(): WorkSampleTest {
+  return {
+    scenario_id: "mvp_fullstack_001",
+    scenario_title: "비개발 창업자의 PT샵 예약 웹서비스 MVP",
+    scenario_description:
+      "비개발 창업자가 동네 PT샵 예약 웹서비스 MVP를 만들고 싶어 합니다. 의뢰자는 회원가입, 예약, 관리자 페이지, 결제, 알림 기능이 모두 있으면 좋겠다고 말합니다. 다만 예산과 기간은 제한적이며, 4주 안에 첫 MVP를 만들고 싶어 합니다. 의뢰자는 개발 지식이 많지 않으며, 중간 진행상황과 리스크를 쉽게 이해할 수 있기를 원합니다.",
+    target_role: "MVP 제작형 풀스택 개발자",
+    estimated_time_minutes: 60,
+    started_at: "",
+    submitted_at: "",
+    self_reported_time_minutes: "",
+    answers: workSampleQuestions.map((question) => ({
+      ...question,
+      answer: "",
+      process_note: ""
+    }))
+  };
+}
+
 function createDefaultDraft(): CandidateDraft {
   return {
     candidate_basic_info: {
@@ -247,7 +325,75 @@ function createDefaultDraft(): CandidateDraft {
       non_developer_communication: "",
       collaboration_difficulty_solution: ""
     },
+    work_sample_test: createDefaultWorkSampleTest(),
     raw_ai_follow_up_questions: []
+  };
+}
+
+function normalizeWorkSampleTest(
+  savedWorkSampleTest?: Partial<WorkSampleTest>
+): WorkSampleTest {
+  const defaultTest = createDefaultWorkSampleTest();
+  const savedAnswers = Array.isArray(savedWorkSampleTest?.answers)
+    ? savedWorkSampleTest.answers
+    : [];
+
+  return {
+    ...defaultTest,
+    ...savedWorkSampleTest,
+    scenario_id: savedWorkSampleTest?.scenario_id || defaultTest.scenario_id,
+    scenario_title: savedWorkSampleTest?.scenario_title || defaultTest.scenario_title,
+    scenario_description:
+      savedWorkSampleTest?.scenario_description || defaultTest.scenario_description,
+    target_role: savedWorkSampleTest?.target_role || defaultTest.target_role,
+    estimated_time_minutes:
+      typeof savedWorkSampleTest?.estimated_time_minutes === "number"
+        ? savedWorkSampleTest.estimated_time_minutes
+        : defaultTest.estimated_time_minutes,
+    started_at: savedWorkSampleTest?.started_at || "",
+    submitted_at: savedWorkSampleTest?.submitted_at || "",
+    self_reported_time_minutes:
+      savedWorkSampleTest?.self_reported_time_minutes || "",
+    answers: defaultTest.answers.map((defaultAnswer) => {
+      const savedAnswer = savedAnswers.find(
+        (answer) => answer.question_id === defaultAnswer.question_id
+      );
+
+      return {
+        ...defaultAnswer,
+        answer: savedAnswer?.answer ?? "",
+        process_note: savedAnswer?.process_note ?? ""
+      };
+    })
+  };
+}
+
+function normalizeDraft(savedDraft: CandidateDraft): CandidateDraft {
+  const defaultDraft = createDefaultDraft();
+
+  return {
+    ...defaultDraft,
+    ...savedDraft,
+    candidate_basic_info: {
+      ...defaultDraft.candidate_basic_info,
+      ...savedDraft.candidate_basic_info
+    },
+    links: {
+      ...defaultDraft.links,
+      ...savedDraft.links
+    },
+    projects:
+      Array.isArray(savedDraft.projects) && savedDraft.projects.length > 0
+        ? savedDraft.projects
+        : defaultDraft.projects,
+    collaboration_experience: {
+      ...defaultDraft.collaboration_experience,
+      ...savedDraft.collaboration_experience
+    },
+    work_sample_test: normalizeWorkSampleTest(savedDraft.work_sample_test),
+    raw_ai_follow_up_questions: Array.isArray(savedDraft.raw_ai_follow_up_questions)
+      ? savedDraft.raw_ai_follow_up_questions
+      : defaultDraft.raw_ai_follow_up_questions
   };
 }
 
@@ -288,6 +434,64 @@ function getConsentTimestamp(consent: ConsentState) {
   return consent.consented_at || new Date().toISOString();
 }
 
+function getWorkSampleCompletedAnswerCount(workSampleTest: WorkSampleTest) {
+  return workSampleTest.answers.filter((answer) => answer.answer.trim()).length;
+}
+
+function hasRequiredWorkSampleAnswers(workSampleTest: WorkSampleTest) {
+  return requiredWorkSampleQuestionIds.every((questionId) =>
+    workSampleTest.answers.some(
+      (answer) => answer.question_id === questionId && answer.answer.trim()
+    )
+  );
+}
+
+function getWorkSampleValidationMessage(workSampleTest: WorkSampleTest) {
+  if (hasRequiredWorkSampleAnswers(workSampleTest)) {
+    return "";
+  }
+
+  return "실무 적합도 분석을 위해 요구사항 이해, MVP 우선순위, 리스크 커뮤니케이션, 인수인계 관련 답변은 필수입니다.";
+}
+
+function ensureWorkSampleStarted(draft: CandidateDraft): CandidateDraft {
+  if (draft.work_sample_test.started_at) {
+    return draft;
+  }
+
+  return {
+    ...draft,
+    work_sample_test: {
+      ...draft.work_sample_test,
+      started_at: new Date().toISOString()
+    }
+  };
+}
+
+function ensureWorkSampleSubmitted(draft: CandidateDraft): CandidateDraft {
+  if (draft.work_sample_test.submitted_at) {
+    return draft;
+  }
+
+  return {
+    ...draft,
+    work_sample_test: {
+      ...draft.work_sample_test,
+      submitted_at: new Date().toISOString()
+    }
+  };
+}
+
+function summarizeWorkSampleAnswer(answer: WorkSampleAnswer) {
+  const trimmed = answer.answer.trim();
+
+  if (!trimmed) {
+    return "입력 없음";
+  }
+
+  return trimmed.length > 140 ? `${trimmed.slice(0, 140).trim()}...` : trimmed;
+}
+
 function buildCandidateProfile(draft: CandidateDraft) {
   const aiFollowUpAnswers = draft.projects.flatMap((project, index) =>
     project.ai_follow_up_answers.map((answer) => ({
@@ -323,6 +527,22 @@ function buildCandidateProfile(draft: CandidateDraft) {
       capacity_reason: project.capacity_reason
     })),
     collaboration_experience: draft.collaboration_experience,
+    work_sample_test: {
+      scenario_id: draft.work_sample_test.scenario_id,
+      scenario_title: draft.work_sample_test.scenario_title,
+      scenario_description: draft.work_sample_test.scenario_description,
+      target_role: draft.work_sample_test.target_role,
+      estimated_time_minutes: draft.work_sample_test.estimated_time_minutes,
+      started_at: draft.work_sample_test.started_at,
+      submitted_at: draft.work_sample_test.submitted_at,
+      self_reported_time_minutes: draft.work_sample_test.self_reported_time_minutes,
+      answers: draft.work_sample_test.answers.map((answer) => ({
+        question_id: answer.question_id,
+        question: answer.question,
+        answer: answer.answer,
+        process_note: answer.process_note
+      }))
+    },
     ai_follow_up_questions: draft.raw_ai_follow_up_questions,
     ai_follow_up_answers: aiFollowUpAnswers
   };
@@ -633,7 +853,12 @@ export default function CandidateIntakePage() {
 
     const timeout = window.setTimeout(() => {
       if (restoredState?.draft && restoredState?.consent) {
-        setDraft(restoredState.draft);
+        const restoredDraft = normalizeDraft(restoredState.draft);
+        setDraft(
+          restoredState.activeStep === WORK_SAMPLE_STEP_INDEX
+            ? ensureWorkSampleStarted(restoredDraft)
+            : restoredDraft
+        );
         setConsent(restoredState.consent);
         setSubmitted(Boolean(restoredState.submitted));
         setDatabaseSubmitted(Boolean(restoredState.database_submitted));
@@ -741,6 +966,32 @@ export default function CandidateIntakePage() {
     }));
   }
 
+  function updateWorkSampleAnswer(
+    questionId: string,
+    key: "answer" | "process_note",
+    value: string
+  ) {
+    setDraft((current) => ({
+      ...current,
+      work_sample_test: {
+        ...current.work_sample_test,
+        answers: current.work_sample_test.answers.map((answer) =>
+          answer.question_id === questionId ? { ...answer, [key]: value } : answer
+        )
+      }
+    }));
+  }
+
+  function updateWorkSampleTime(value: string) {
+    setDraft((current) => ({
+      ...current,
+      work_sample_test: {
+        ...current.work_sample_test,
+        self_reported_time_minutes: value
+      }
+    }));
+  }
+
   function addProject() {
     setDraft((current) => {
       if (current.projects.length >= 3) {
@@ -837,7 +1088,14 @@ export default function CandidateIntakePage() {
       }
     }
 
-    if (step === 8 && draft.raw_ai_follow_up_questions.length === 0) {
+    if (step === WORK_SAMPLE_STEP_INDEX) {
+      return getWorkSampleValidationMessage(draft.work_sample_test);
+    }
+
+    if (
+      step === AI_QUESTIONS_STEP_INDEX &&
+      draft.raw_ai_follow_up_questions.length === 0
+    ) {
       return "AI 추가 질문을 생성한 뒤 다음 단계로 이동할 수 있습니다.";
     }
 
@@ -851,6 +1109,27 @@ export default function CandidateIntakePage() {
       setStepError("필수 동의 2개가 체크되어야 후보자 입력 단계로 넘어갈 수 있습니다.");
       setActiveStep(consent.privacy_collection_required ? 2 : 1);
       return;
+    }
+
+    if (targetStep > WORK_SAMPLE_STEP_INDEX) {
+      const workSampleValidation = getWorkSampleValidationMessage(
+        draft.work_sample_test
+      );
+
+      if (workSampleValidation) {
+        setStepError(workSampleValidation);
+        setDraft((current) => ensureWorkSampleStarted(current));
+        setActiveStep(WORK_SAMPLE_STEP_INDEX);
+        return;
+      }
+    }
+
+    if (targetStep === WORK_SAMPLE_STEP_INDEX) {
+      setDraft((current) => ensureWorkSampleStarted(current));
+    }
+
+    if (activeStep === WORK_SAMPLE_STEP_INDEX && targetStep > activeStep) {
+      setDraft((current) => ensureWorkSampleSubmitted(current));
     }
 
     setActiveStep(Math.max(0, Math.min(targetStep, steps.length - 1)));
@@ -868,8 +1147,13 @@ export default function CandidateIntakePage() {
 
   async function generateFollowUps() {
     const projectValidation = getStepValidationMessage(6);
+    const workSampleValidation = getStepValidationMessage(WORK_SAMPLE_STEP_INDEX);
     if (projectValidation) {
       setGenerationError(projectValidation);
+      return;
+    }
+    if (workSampleValidation) {
+      setGenerationError(workSampleValidation);
       return;
     }
 
@@ -914,7 +1198,7 @@ export default function CandidateIntakePage() {
       setDraft((current) => mergeQuestionsIntoProjects(current, questions));
       setFallbackUsed(Boolean(data.fallback_used));
       setStepError("");
-      setActiveStep(9);
+      setActiveStep(AI_ANSWERS_STEP_INDEX);
     } catch (error) {
       setGenerationError(
         error instanceof Error ? error.message : "추가 질문 생성 중 오류가 발생했습니다."
@@ -936,12 +1220,15 @@ export default function CandidateIntakePage() {
     URL.revokeObjectURL(url);
   }
 
-  async function submitToSupabase(nextConsent: ConsentState) {
+  async function submitToSupabase(
+    nextConsent: ConsentState,
+    nextDraft: CandidateDraft = draft
+  ) {
     setIsSubmittingToSupabase(true);
     setSubmissionError("");
 
     try {
-      const payload = submitCandidateProfile(draft, nextConsent);
+      const payload = submitCandidateProfile(nextDraft, nextConsent);
       const response = await fetch("/api/submit-candidate", {
         method: "POST",
         headers: {
@@ -983,25 +1270,33 @@ export default function CandidateIntakePage() {
     const basicValidation = getStepValidationMessage(4);
     const linkValidation = getStepValidationMessage(5);
     const projectValidation = getStepValidationMessage(6);
+    const workSampleValidation = getStepValidationMessage(WORK_SAMPLE_STEP_INDEX);
     const consentValidation = !hasRequiredConsents(consent)
       ? "필수 동의 2개가 체크되어야 제출할 수 있습니다."
       : "";
-    const message = consentValidation || basicValidation || linkValidation || projectValidation;
+    const message =
+      consentValidation ||
+      basicValidation ||
+      linkValidation ||
+      projectValidation ||
+      workSampleValidation;
 
     if (message) {
       setStepError(message);
       return;
     }
 
+    const nextDraft = ensureWorkSampleSubmitted(draft);
     const nextConsent = {
       ...consent,
       consented_at: getConsentTimestamp(consent)
     };
+    setDraft(nextDraft);
     setConsent(nextConsent);
     setSubmitted(true);
     setStepError("");
-    setActiveStep(11);
-    await submitToSupabase(nextConsent);
+    setActiveStep(EXPORT_STEP_INDEX);
+    await submitToSupabase(nextConsent, nextDraft);
   }
 
   const progressPercent = Math.round(((activeStep + 1) / steps.length) * 100);
@@ -1117,7 +1412,15 @@ export default function CandidateIntakePage() {
             />
           ) : null}
 
-          {activeStep === 8 ? (
+          {activeStep === WORK_SAMPLE_STEP_INDEX ? (
+            <WorkSampleStep
+              workSampleTest={draft.work_sample_test}
+              updateWorkSampleAnswer={updateWorkSampleAnswer}
+              updateWorkSampleTime={updateWorkSampleTime}
+            />
+          ) : null}
+
+          {activeStep === AI_QUESTIONS_STEP_INDEX ? (
             <GenerateQuestionsStep
               draft={draft}
               isGenerating={isGenerating}
@@ -1127,14 +1430,14 @@ export default function CandidateIntakePage() {
             />
           ) : null}
 
-          {activeStep === 9 ? (
+          {activeStep === AI_ANSWERS_STEP_INDEX ? (
             <AnswerQuestionsStep
               draft={draft}
               updateFollowUpAnswer={updateFollowUpAnswer}
             />
           ) : null}
 
-          {activeStep === 10 ? (
+          {activeStep === REVIEW_STEP_INDEX ? (
             <ReviewStep
               draft={draft}
               consent={consent}
@@ -1143,7 +1446,7 @@ export default function CandidateIntakePage() {
             />
           ) : null}
 
-          {activeStep === 11 ? (
+          {activeStep === EXPORT_STEP_INDEX ? (
             <ExportStep
               submitted={submitted}
               databaseSubmitted={databaseSubmitted}
@@ -1174,7 +1477,7 @@ export default function CandidateIntakePage() {
                 이전
               </Button>
             ) : null}
-            {activeStep === 10 ? (
+            {activeStep === REVIEW_STEP_INDEX ? (
               <Button
                 type="button"
                 icon={isSubmittingToSupabase ? Loader2 : Send}
@@ -1211,9 +1514,9 @@ function LandingStep({ onStart }: { onStart: () => void }) {
         />
         <div className="space-y-4 text-sm leading-6 text-slate-700">
           <p>
-            현재 단계에서는 채용 합격/탈락을 판단하지 않습니다. 입력된 정보는
-            후보자의 개발 경험을 구조화하고, 향후 업무적합도 분석 모델을 개선하기
-            위한 목적으로만 사용됩니다.
+            현재 단계에서는 채용 여부를 결정하지 않습니다. 입력된 정보는 후보자의
+            개발 경험을 구조화하고, 향후 업무적합도 분석 모델을 개선하기 위한
+            목적으로만 사용됩니다.
           </p>
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
             본 폼은 자발적 참여 기반입니다. 제출 전 개인정보 수집·이용 및 AI 분석
@@ -1384,9 +1687,9 @@ function AiConsentStep({
             {
               title: "AI가 하지 않는 것",
               items: [
-                "합격/불합격 판단",
-                "인성 단정",
-                "성격 평가",
+                "채용 여부 결정",
+                "사람 자체에 대한 단정",
+                "성격 추정",
                 "민감정보 추론",
                 "나이, 성별, 외모, 출신지역 등 차별 가능 정보 기반 분석",
                 "후보자 몰래 기업에 정보 제공"
@@ -1969,6 +2272,109 @@ function CollaborationStep({
   );
 }
 
+function WorkSampleStep({
+  workSampleTest,
+  updateWorkSampleAnswer,
+  updateWorkSampleTime
+}: {
+  workSampleTest: WorkSampleTest;
+  updateWorkSampleAnswer: (
+    questionId: string,
+    key: "answer" | "process_note",
+    value: string
+  ) => void;
+  updateWorkSampleTime: (value: string) => void;
+}) {
+  return (
+    <div>
+      <SectionTitle
+        title="실무 시나리오 테스트"
+        description="이 테스트는 정답을 맞히는 시험이 아니라, 실제 업무상황에서 요구사항을 이해하고, 우선순위를 정하고, 리스크를 설명하는 과정을 확인하기 위한 자료입니다."
+      />
+
+      <div className="rounded-lg border border-sky-100 bg-sky-50 p-5">
+        <div className="grid gap-4 md:grid-cols-3">
+          <SummaryRow label="시나리오 제목" value={workSampleTest.scenario_title} />
+          <SummaryRow label="대상 역할" value={workSampleTest.target_role} />
+          <SummaryRow
+            label="예상 소요 시간"
+            value={`${workSampleTest.estimated_time_minutes}분`}
+          />
+        </div>
+        <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-sky-950">
+          {workSampleTest.scenario_description}
+        </p>
+      </div>
+
+      <div className="mt-6 space-y-5">
+        {workSampleTest.answers.map((answer, index) => {
+          const required = requiredWorkSampleQuestionIds.includes(answer.question_id);
+
+          return (
+            <div
+              key={answer.question_id}
+              className="rounded-lg border border-slate-200 bg-white p-4"
+            >
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-teal-700">
+                    질문 {index + 1}
+                    {required ? " · 필수" : " · 선택"}
+                  </p>
+                  <h2 className="mt-2 text-base font-bold leading-7 text-slate-950">
+                    {answer.question}
+                  </h2>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <Field label="답변" required={required}>
+                  <TextArea
+                    value={answer.answer}
+                    onChange={(event) =>
+                      updateWorkSampleAnswer(
+                        answer.question_id,
+                        "answer",
+                        event.target.value
+                      )
+                    }
+                    className="min-h-40"
+                    placeholder="어떤 기준으로 판단했는지, 의뢰자에게 어떻게 설명할지 구체적으로 작성해주세요."
+                  />
+                </Field>
+                <Field label="생각한 과정 / 판단 기준">
+                  <TextArea
+                    value={answer.process_note}
+                    onChange={(event) =>
+                      updateWorkSampleAnswer(
+                        answer.question_id,
+                        "process_note",
+                        event.target.value
+                      )
+                    }
+                    className="min-h-40"
+                    placeholder="이 답변을 작성할 때 어떤 순서로 생각했는지, 무엇을 중요하게 봤는지 적어주세요."
+                  />
+                </Field>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 max-w-sm">
+        <Field label="실제 작성에 걸린 시간">
+          <TextInput
+            value={workSampleTest.self_reported_time_minutes}
+            onChange={(event) => updateWorkSampleTime(event.target.value)}
+            placeholder="예: 45분"
+          />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
 function GenerateQuestionsStep({
   draft,
   isGenerating,
@@ -2113,7 +2519,7 @@ function ReviewStep({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <SectionTitle
           title="최종 제출 전 확인"
-          description="수집된 데이터와 동의 상태를 확인합니다. 현재 DB가 없으므로 실제 서버 저장은 하지 않고 JSON 생성만 수행합니다."
+          description="수집된 데이터와 동의 상태를 확인합니다. 제출 시 candidate_profile과 consent_log가 생성되고, 설정된 경우 Supabase에 저장됩니다."
         />
         <Button
           type="button"
@@ -2254,6 +2660,41 @@ function ReviewStep({
               0
             )}개`}
           />
+        </SummaryBlock>
+      </div>
+
+      <div className="mt-6">
+        <SummaryBlock title="실무 시나리오 테스트">
+          <SummaryRow
+            label="시나리오 제목"
+            value={draft.work_sample_test.scenario_title}
+          />
+          <SummaryRow label="대상 역할" value={draft.work_sample_test.target_role} />
+          <SummaryRow
+            label="작성 시간"
+            value={draft.work_sample_test.self_reported_time_minutes}
+          />
+          <SummaryRow
+            label="답변 완료 문항 수"
+            value={`${getWorkSampleCompletedAnswerCount(draft.work_sample_test)} / ${draft.work_sample_test.answers.length}개`}
+          />
+          <SummaryRow
+            label="필수 문항 완료 여부"
+            value={
+              hasRequiredWorkSampleAnswers(draft.work_sample_test)
+                ? "필수 문항 완료"
+                : "필수 문항 추가 입력 필요"
+            }
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            {draft.work_sample_test.answers.map((answer, index) => (
+              <SummaryRow
+                key={answer.question_id}
+                label={`Q${index + 1}. ${answer.question}`}
+                value={summarizeWorkSampleAnswer(answer)}
+              />
+            ))}
+          </div>
         </SummaryBlock>
       </div>
     </div>
