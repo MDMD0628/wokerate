@@ -11,6 +11,8 @@ type CandidateProfilePayload = {
     name_or_nickname?: unknown;
     name?: unknown;
     email?: unknown;
+    preferred_work_type?: unknown;
+    tech_stack?: unknown;
   };
   links?: {
     github_url?: unknown;
@@ -48,6 +50,14 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function getStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .map((item) => getString(item))
+        .filter((item) => item.length > 0)
+    : [];
+}
+
 function isHttpUrl(value: string) {
   try {
     const url = new URL(value);
@@ -81,12 +91,34 @@ function validateProjects(candidateProfile: CandidateProfilePayload) {
     return "A maximum of three projects is allowed.";
   }
 
-  const hasProjectName = candidateProfile.projects.some((project) => {
-    return isRecord(project) && getString(project.name).length > 0;
-  });
+  const firstProject = candidateProfile.projects[0];
+  if (!isRecord(firstProject)) {
+    return "The first project must be an object.";
+  }
 
-  if (!hasProjectName) {
-    return "At least one project name is required.";
+  const requiredTextFields = [
+    ["name", "project name"],
+    ["project_type", "project type"],
+    ["purpose", "project purpose"],
+    ["role", "project role"],
+    ["difficulty", "project difficulty"],
+    ["solution_process", "project solution process"]
+  ] as const;
+
+  const missingTextField = requiredTextFields.find(
+    ([field]) => !getString(firstProject[field])
+  );
+
+  if (missingTextField) {
+    return `The first project's ${missingTextField[1]} is required.`;
+  }
+
+  if (getStringArray(firstProject.tech_stack).length < 1) {
+    return "The first project must include at least one tech_stack item.";
+  }
+
+  if (getStringArray(firstProject.implemented_features).length < 1) {
+    return "The first project must include at least one implemented_features item.";
   }
 
   return "";
@@ -138,6 +170,17 @@ function validateCandidateProfile(candidateProfile: CandidateProfilePayload) {
 
   if (!isValidEmail(email)) {
     return "candidate_profile.candidate_basic_info.email must be valid.";
+  }
+
+  if (getStringArray(candidateProfile.candidate_basic_info?.tech_stack).length < 1) {
+    return "candidate_profile.candidate_basic_info.tech_stack must include at least one item.";
+  }
+
+  if (
+    getStringArray(candidateProfile.candidate_basic_info?.preferred_work_type).length <
+    1
+  ) {
+    return "candidate_profile.candidate_basic_info.preferred_work_type must include at least one item.";
   }
 
   const githubUrl = getString(candidateProfile.links?.github_url);

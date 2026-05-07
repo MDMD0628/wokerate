@@ -461,6 +461,10 @@ function hasRequiredWorkSampleAnswers(workSampleTest: WorkSampleTest) {
   );
 }
 
+function isRequiredWorkSampleQuestion(questionId: string) {
+  return requiredWorkSampleQuestionIds.includes(questionId);
+}
+
 function getWorkSampleValidationMessage(workSampleTest: WorkSampleTest) {
   if (hasRequiredWorkSampleAnswers(workSampleTest)) {
     return "";
@@ -505,6 +509,183 @@ function summarizeWorkSampleAnswer(answer: WorkSampleAnswer) {
   }
 
   return trimmed.length > 140 ? `${trimmed.slice(0, 140).trim()}...` : trimmed;
+}
+
+function getBasicInfoValidationMessage(draft: CandidateDraft) {
+  if (!draft.candidate_basic_info.name_or_nickname.trim()) {
+    return "이름 또는 닉네임을 입력해주세요.";
+  }
+  if (!draft.candidate_basic_info.email.trim()) {
+    return "이메일을 입력해주세요.";
+  }
+  if (draft.candidate_basic_info.tech_stack.length === 0) {
+    return "주요 기술스택을 최소 1개 입력해주세요.";
+  }
+  if (draft.candidate_basic_info.preferred_work_type.length === 0) {
+    return "희망 업무 유형을 최소 1개 선택해주세요.";
+  }
+
+  return "";
+}
+
+function getLinkValidationMessage(draft: CandidateDraft) {
+  if (!draft.links.github_url.trim()) {
+    return "GitHub URL을 입력해주세요.";
+  }
+
+  return "";
+}
+
+function getProjectValidationMessage(projects: Project[]) {
+  if (projects.length < 1) {
+    return "대표 프로젝트를 최소 1개 입력해주세요.";
+  }
+
+  const firstProject = projects[0];
+  if (!firstProject.name.trim()) {
+    return "첫 번째 대표 프로젝트의 프로젝트명을 입력해주세요.";
+  }
+  if (!firstProject.project_type.trim()) {
+    return "첫 번째 대표 프로젝트의 프로젝트 유형을 선택해주세요.";
+  }
+  if (!firstProject.purpose.trim()) {
+    return "첫 번째 대표 프로젝트의 목적을 입력해주세요.";
+  }
+  if (!firstProject.role.trim()) {
+    return "첫 번째 대표 프로젝트에서 본인이 맡은 역할을 입력해주세요.";
+  }
+  if (firstProject.tech_stack.length === 0) {
+    return "첫 번째 대표 프로젝트의 사용 기술스택을 최소 1개 입력해주세요.";
+  }
+  if (firstProject.implemented_features.length === 0) {
+    return "첫 번째 대표 프로젝트에서 구현한 핵심 기능을 최소 1개 입력해주세요.";
+  }
+  if (!firstProject.difficulty.trim()) {
+    return "첫 번째 대표 프로젝트에서 가장 어려웠던 문제를 입력해주세요.";
+  }
+  if (!firstProject.solution_process.trim()) {
+    return "첫 번째 대표 프로젝트의 문제 해결 과정을 입력해주세요.";
+  }
+
+  return "";
+}
+
+function getRequiredCompletionSummary(draft: CandidateDraft, consent: ConsentState) {
+  const firstProject = draft.projects[0];
+  const items = [
+    { label: "개인정보 수집·이용 동의", completed: consent.privacy_collection_required },
+    { label: "AI 분석 동의", completed: consent.ai_analysis_required },
+    {
+      label: "이름 또는 닉네임",
+      completed: Boolean(draft.candidate_basic_info.name_or_nickname.trim())
+    },
+    { label: "이메일", completed: Boolean(draft.candidate_basic_info.email.trim()) },
+    { label: "GitHub URL", completed: Boolean(draft.links.github_url.trim()) },
+    {
+      label: "주요 기술스택",
+      completed: draft.candidate_basic_info.tech_stack.length > 0
+    },
+    {
+      label: "희망 업무 유형",
+      completed: draft.candidate_basic_info.preferred_work_type.length > 0
+    },
+    { label: "대표 프로젝트명", completed: Boolean(firstProject?.name.trim()) },
+    { label: "프로젝트 유형", completed: Boolean(firstProject?.project_type.trim()) },
+    { label: "프로젝트 목적", completed: Boolean(firstProject?.purpose.trim()) },
+    { label: "본인 역할", completed: Boolean(firstProject?.role.trim()) },
+    { label: "프로젝트 기술스택", completed: (firstProject?.tech_stack.length ?? 0) > 0 },
+    {
+      label: "구현한 핵심 기능",
+      completed: (firstProject?.implemented_features.length ?? 0) > 0
+    },
+    { label: "어려웠던 문제", completed: Boolean(firstProject?.difficulty.trim()) },
+    { label: "문제 해결 과정", completed: Boolean(firstProject?.solution_process.trim()) },
+    {
+      label: "실무 테스트 필수 문항",
+      completed: hasRequiredWorkSampleAnswers(draft.work_sample_test)
+    }
+  ];
+
+  const completedCount = items.filter((item) => item.completed).length;
+  return {
+    items,
+    completedCount,
+    totalCount: items.length,
+    percent: Math.round((completedCount / items.length) * 100)
+  };
+}
+
+function countFilledValues(values: Array<string | string[]>) {
+  return values.filter((value) =>
+    Array.isArray(value) ? value.length > 0 : value.trim().length > 0
+  ).length;
+}
+
+function getOptionalInputCount(draft: CandidateDraft) {
+  const optionalLinkCount = countFilledValues([
+    draft.links.portfolio_url,
+    draft.links.deployed_service_url,
+    draft.links.blog_url,
+    draft.links.linkedin_url
+  ]);
+  const optionalBasicCount = countFilledValues([
+    draft.candidate_basic_info.current_status
+  ]);
+  const optionalProjectCount = draft.projects.reduce((sum, project, index) => {
+    const optionalValues: Array<string | string[]> = [
+      project.url,
+      project.github_url,
+      project.frontend_scope,
+      project.backend_scope,
+      project.database_scope,
+      project.auth_experience,
+      project.deployment_experience,
+      project.real_user_or_client,
+      project.collaboration_people,
+      project.result,
+      project.capacity_reason
+    ];
+
+    if (index > 0) {
+      optionalValues.push(
+        project.name,
+        project.project_type,
+        project.purpose,
+        project.role,
+        project.tech_stack,
+        project.implemented_features,
+        project.difficulty,
+        project.solution_process
+      );
+    }
+
+    return sum + countFilledValues(optionalValues);
+  }, 0);
+  const collaborationCount = countFilledValues([
+    draft.collaboration_experience.pr_issue_code_review,
+    draft.collaboration_experience.role_distribution,
+    draft.collaboration_experience.requirement_change_response,
+    draft.collaboration_experience.delay_or_error_communication,
+    draft.collaboration_experience.non_developer_communication,
+    draft.collaboration_experience.collaboration_difficulty_solution
+  ]);
+  const optionalWorkSampleCount = draft.work_sample_test.answers.filter(
+    (answer) => !isRequiredWorkSampleQuestion(answer.question_id) && answer.answer.trim()
+  ).length;
+  const aiAnswerCount = draft.projects.reduce(
+    (sum, project) =>
+      sum + project.ai_follow_up_answers.filter((answer) => answer.answer.trim()).length,
+    0
+  );
+
+  return (
+    optionalBasicCount +
+    optionalLinkCount +
+    optionalProjectCount +
+    collaborationCount +
+    optionalWorkSampleCount +
+    aiAnswerCount
+  );
 }
 
 function getSafeRestoredStep(
@@ -1109,36 +1290,19 @@ export default function CandidateIntakePage() {
     }
 
     if (step === 4) {
-      if (!draft.candidate_basic_info.name_or_nickname.trim()) {
-        return "이름 또는 닉네임을 입력해주세요.";
-      }
-      if (!draft.candidate_basic_info.email.trim()) {
-        return "이메일을 입력해주세요.";
-      }
+      return getBasicInfoValidationMessage(draft);
     }
 
-    if (step === 5 && !draft.links.github_url.trim()) {
-      return "GitHub URL을 입력해주세요.";
+    if (step === 5) {
+      return getLinkValidationMessage(draft);
     }
 
     if (step === 6) {
-      if (draft.projects.length < 1) {
-        return "대표 프로젝트를 최소 1개 입력해주세요.";
-      }
-      if (!draft.projects.some((project) => project.name.trim())) {
-        return "대표 프로젝트명을 최소 1개 입력해주세요.";
-      }
+      return getProjectValidationMessage(draft.projects);
     }
 
     if (step === WORK_SAMPLE_STEP_INDEX) {
       return getWorkSampleValidationMessage(draft.work_sample_test);
-    }
-
-    if (
-      step === AI_QUESTIONS_STEP_INDEX &&
-      draft.raw_ai_follow_up_questions.length === 0
-    ) {
-      return "AI 추가 질문을 생성한 뒤 다음 단계로 이동할 수 있습니다.";
     }
 
     return "";
@@ -1309,9 +1473,9 @@ export default function CandidateIntakePage() {
   }
 
   async function handleSubmit() {
-    const basicValidation = getStepValidationMessage(4);
-    const linkValidation = getStepValidationMessage(5);
-    const projectValidation = getStepValidationMessage(6);
+    const basicValidation = getBasicInfoValidationMessage(draft);
+    const linkValidation = getLinkValidationMessage(draft);
+    const projectValidation = getProjectValidationMessage(draft.projects);
     const workSampleValidation = getStepValidationMessage(WORK_SAMPLE_STEP_INDEX);
     const consentValidation = !hasRequiredConsents(consent)
       ? "필수 동의 2개가 체크되어야 제출할 수 있습니다."
@@ -1342,6 +1506,8 @@ export default function CandidateIntakePage() {
   }
 
   const progressPercent = Math.round(((activeStep + 1) / steps.length) * 100);
+  const requiredCompletion = getRequiredCompletionSummary(draft, consent);
+  const optionalInputCount = getOptionalInputCount(draft);
   const canGoNext = activeStep < steps.length - 1;
 
   return (
@@ -1372,6 +1538,15 @@ export default function CandidateIntakePage() {
               className="h-2 rounded-full bg-sky-700 transition-all"
               style={{ width: `${progressPercent}%` }}
             />
+          </div>
+          <div className="mt-3 grid gap-2 text-xs font-semibold sm:grid-cols-2">
+            <div className="rounded-md border border-teal-100 bg-teal-50 px-3 py-2 text-teal-900">
+              필수 완료율: {requiredCompletion.percent}% (
+              {requiredCompletion.completedCount}/{requiredCompletion.totalCount})
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-700">
+              심화 입력 포함: 선택 항목 {optionalInputCount}개 입력됨
+            </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {steps.map((step, index) => {
@@ -1640,8 +1815,7 @@ function PrivacyConsentStep({
               "프로젝트별 본인 역할",
               "구현 기능",
               "문제 해결 경험",
-              "배포 경험",
-              "협업 경험"
+              "실무 시나리오 테스트 필수 답변"
             ]
           },
           {
@@ -1651,7 +1825,10 @@ function PrivacyConsentStep({
               "배포 서비스 URL",
               "블로그 또는 LinkedIn URL",
               "프리랜서/외주 경험",
-              "프로젝트 성과 또는 사용자 피드백"
+              "배포 경험",
+              "협업 경험",
+              "프로젝트 성과 또는 사용자 피드백",
+              "AI 추가 질문 답변"
             ]
           },
           {
@@ -1873,53 +2050,49 @@ function BasicInfoStep({
     <div>
       <SectionTitle
         title="후보자 기본 정보 입력"
-        description="후보자가 직접 제출하는 정보만 수집합니다. 나이, 성별, 외모, 출신지역, 결혼 여부, 가족관계, 건강정보, 종교, 정치성향 등 직무와 무관하거나 민감한 정보는 입력받지 않습니다."
+        description="먼저 필수 항목만 작성해 제출할 수 있습니다. 선택 항목은 더 정확한 업무적합도 분석을 위한 참고 자료입니다."
       />
-      <div className="grid gap-5 md:grid-cols-2">
-        <Field label="이름 또는 닉네임" required>
-          <TextInput
-            value={draft.candidate_basic_info.name_or_nickname}
-            onChange={(event) =>
-              updateBasicInfo("name_or_nickname", event.target.value)
-            }
-            placeholder="예: workerate-dev"
-          />
-        </Field>
-        <Field label="이메일" required>
-          <TextInput
-            type="email"
-            value={draft.candidate_basic_info.email}
-            onChange={(event) => updateBasicInfo("email", event.target.value)}
-            placeholder="name@example.com"
-          />
-        </Field>
-        <Field label="현재 상태">
-          <SelectInput
-            value={draft.candidate_basic_info.current_status}
-            onChange={(event) => updateBasicInfo("current_status", event.target.value)}
+
+      <div className="rounded-lg border border-sky-100 bg-sky-50 p-4 text-sm leading-6 text-sky-950">
+        필수 항목은 최소 분석과 제출에 필요한 정보입니다. 나이, 성별, 외모,
+        출신지역, 결혼 여부, 가족관계, 건강정보, 종교, 정치성향 등 직무와
+        무관하거나 민감한 정보는 입력하지 않습니다.
+      </div>
+
+      <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <h2 className="text-base font-bold text-slate-950">필수 입력</h2>
+        <div className="mt-4 grid gap-5 md:grid-cols-2">
+          <Field label="이름 또는 닉네임" required>
+            <TextInput
+              value={draft.candidate_basic_info.name_or_nickname}
+              onChange={(event) =>
+                updateBasicInfo("name_or_nickname", event.target.value)
+              }
+              placeholder="예: workerate-dev"
+            />
+          </Field>
+          <Field label="이메일" required>
+            <TextInput
+              type="email"
+              value={draft.candidate_basic_info.email}
+              onChange={(event) => updateBasicInfo("email", event.target.value)}
+              placeholder="name@example.com"
+            />
+          </Field>
+          <Field
+            label="주요 기술스택"
+            hint={`쉼표 또는 줄바꿈으로 입력하세요. 예: ${techExamples.join(", ")}`}
+            required
           >
-            <option value="">선택해주세요</option>
-            {currentStatusOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </SelectInput>
-        </Field>
-        <Field
-          label="주요 기술스택"
-          hint={`쉼표 또는 줄바꿈으로 입력하세요. 예: ${techExamples.join(", ")}`}
-        >
-          <TextArea
-            value={listToText(draft.candidate_basic_info.tech_stack)}
-            onChange={(event) =>
-              updateBasicInfo("tech_stack", parseList(event.target.value))
-            }
-            placeholder="React, Next.js, TypeScript, Node.js, PostgreSQL"
-          />
-        </Field>
-        <div className="md:col-span-2">
-          <Field label="희망 업무 유형" hint="여러 개를 선택할 수 있습니다.">
+            <TextArea
+              value={listToText(draft.candidate_basic_info.tech_stack)}
+              onChange={(event) =>
+                updateBasicInfo("tech_stack", parseList(event.target.value))
+              }
+              placeholder="React, Next.js, TypeScript, Node.js, PostgreSQL"
+            />
+          </Field>
+          <Field label="희망 업무 유형" hint="여러 개를 선택할 수 있습니다." required>
             <MultiSelectPills
               options={preferredWorkOptions}
               value={draft.candidate_basic_info.preferred_work_type}
@@ -1928,7 +2101,31 @@ function BasicInfoStep({
           </Field>
         </div>
       </div>
-    </div>
+
+      <details className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer text-base font-bold text-slate-950">
+          심화 정보 입력하기
+        </summary>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          현재 상태는 선택 항목입니다. 비어 있어도 제출할 수 있습니다.
+        </p>
+        <div className="mt-4 max-w-md">
+          <Field label="현재 상태">
+            <SelectInput
+              value={draft.candidate_basic_info.current_status}
+              onChange={(event) => updateBasicInfo("current_status", event.target.value)}
+            >
+              <option value="">선택해주세요</option>
+              {currentStatusOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </SelectInput>
+          </Field>
+        </div>
+      </details>
+      </div>
   );
 }
 
@@ -1943,45 +2140,63 @@ function LinksStep({
     <div>
       <SectionTitle
         title="GitHub 및 포트폴리오 링크 입력"
-        description="GitHub URL은 필수입니다. 나머지 링크는 후보자가 공개 가능한 항목만 입력합니다."
+        description="GitHub URL은 필수입니다. 나머지 링크는 더 정확한 분석을 위한 선택 입력입니다."
       />
-      <div className="grid gap-5 md:grid-cols-2">
-        <Field label="GitHub URL" required>
-          <TextInput
-            value={links.github_url}
-            onChange={(event) => updateLinks("github_url", event.target.value)}
-            placeholder="https://github.com/username"
-          />
-        </Field>
-        <Field label="포트폴리오 URL">
-          <TextInput
-            value={links.portfolio_url}
-            onChange={(event) => updateLinks("portfolio_url", event.target.value)}
-            placeholder="https://portfolio.example.com"
-          />
-        </Field>
-        <Field label="배포된 서비스 URL">
-          <TextInput
-            value={links.deployed_service_url}
-            onChange={(event) => updateLinks("deployed_service_url", event.target.value)}
-            placeholder="https://service.example.com"
-          />
-        </Field>
-        <Field label="기술 블로그 URL">
-          <TextInput
-            value={links.blog_url}
-            onChange={(event) => updateLinks("blog_url", event.target.value)}
-            placeholder="https://blog.example.com"
-          />
-        </Field>
-        <Field label="LinkedIn URL">
-          <TextInput
-            value={links.linkedin_url}
-            onChange={(event) => updateLinks("linkedin_url", event.target.value)}
-            placeholder="https://linkedin.com/in/..."
-          />
-        </Field>
+
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <h2 className="text-base font-bold text-slate-950">필수 입력</h2>
+        <div className="mt-4 max-w-xl">
+          <Field label="GitHub URL" required>
+            <TextInput
+              value={links.github_url}
+              onChange={(event) => updateLinks("github_url", event.target.value)}
+              placeholder="https://github.com/username"
+            />
+          </Field>
+        </div>
       </div>
+
+      <details className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer text-base font-bold text-slate-950">
+          선택 링크 입력하기
+        </summary>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          포트폴리오, 배포 서비스, 블로그, LinkedIn은 비어 있어도 제출할 수
+          있습니다.
+        </p>
+        <div className="mt-4 grid gap-5 md:grid-cols-2">
+          <Field label="포트폴리오 URL">
+            <TextInput
+              value={links.portfolio_url}
+              onChange={(event) => updateLinks("portfolio_url", event.target.value)}
+              placeholder="https://portfolio.example.com"
+            />
+          </Field>
+          <Field label="배포된 서비스 URL">
+            <TextInput
+              value={links.deployed_service_url}
+              onChange={(event) =>
+                updateLinks("deployed_service_url", event.target.value)
+              }
+              placeholder="https://service.example.com"
+            />
+          </Field>
+          <Field label="기술 블로그 URL">
+            <TextInput
+              value={links.blog_url}
+              onChange={(event) => updateLinks("blog_url", event.target.value)}
+              placeholder="https://blog.example.com"
+            />
+          </Field>
+          <Field label="LinkedIn URL">
+            <TextInput
+              value={links.linkedin_url}
+              onChange={(event) => updateLinks("linkedin_url", event.target.value)}
+              placeholder="https://linkedin.com/in/..."
+            />
+          </Field>
+        </div>
+      </details>
     </div>
   );
 }
@@ -2006,7 +2221,7 @@ function ProjectsStep({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <SectionTitle
           title="대표 프로젝트 입력"
-          description="대표 프로젝트는 최소 1개, 최대 3개까지 입력합니다. 분석을 위한 데이터 구조화가 목적이므로 본인의 역할과 구현 범위를 구체적으로 적어주세요."
+          description="첫 번째 프로젝트의 필수 항목만 작성해도 제출할 수 있습니다. 2~3번째 프로젝트와 심화 정보는 더 정확한 분석을 위한 선택 입력입니다."
         />
         <Button
           type="button"
@@ -2016,227 +2231,270 @@ function ProjectsStep({
           disabled={projects.length >= 3}
           className="shrink-0"
         >
-          프로젝트 추가
+          선택 프로젝트 추가
         </Button>
       </div>
 
-      <div className="space-y-6">
-        {projects.map((project, projectIndex) => (
-          <div
-            key={project.id}
-            className="rounded-lg border border-slate-200 bg-slate-50 p-4 sm:p-5"
-          >
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-bold text-slate-950">
-                대표 프로젝트 {projectIndex + 1}
-              </h2>
-              <Button
-                type="button"
-                variant="danger"
-                icon={Trash2}
-                onClick={() => removeProject(projectIndex)}
-                disabled={projects.length <= 1}
-              >
-                삭제
-              </Button>
-            </div>
+      <div className="rounded-lg border border-sky-100 bg-sky-50 p-4 text-sm leading-6 text-sky-950">
+        대표 프로젝트는 최소 1개만 필수입니다. 선택 항목은 배포, DB, 협업, 운영
+        경험처럼 리포트 근거를 풍부하게 만드는 정보입니다.
+      </div>
 
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field label="프로젝트명" required>
-                <TextInput
-                  value={project.name}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "name", event.target.value)
-                  }
-                  placeholder="예: 예약 관리 SaaS"
-                />
-              </Field>
-              <Field label="프로젝트 URL">
-                <TextInput
-                  value={project.url}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "url", event.target.value)
-                  }
-                  placeholder="https://..."
-                />
-              </Field>
-              <Field label="GitHub repository URL">
-                <TextInput
-                  value={project.github_url}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "github_url", event.target.value)
-                  }
-                  placeholder="https://github.com/..."
-                />
-              </Field>
-              <Field label="프로젝트 유형">
-                <SelectInput
-                  value={project.project_type}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "project_type", event.target.value)
-                  }
+      <div className="mt-6 space-y-6">
+        {projects.map((project, projectIndex) => {
+          const isPrimaryProject = projectIndex === 0;
+
+          return (
+            <div
+              key={project.id}
+              className="rounded-lg border border-slate-200 bg-slate-50 p-4 sm:p-5"
+            >
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-teal-700">
+                    {isPrimaryProject ? "필수 프로젝트" : "선택 프로젝트"}
+                  </p>
+                  <h2 className="mt-1 text-lg font-bold text-slate-950">
+                    대표 프로젝트 {projectIndex + 1}
+                  </h2>
+                </div>
+                <Button
+                  type="button"
+                  variant="danger"
+                  icon={Trash2}
+                  onClick={() => removeProject(projectIndex)}
+                  disabled={projects.length <= 1}
                 >
-                  <option value="">선택해주세요</option>
-                  {projectTypeOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </SelectInput>
-              </Field>
-              <Field label="프로젝트 목적">
-                <TextArea
-                  value={project.purpose}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "purpose", event.target.value)
-                  }
-                  placeholder="어떤 문제를 해결하기 위해 만든 프로젝트인지 적어주세요."
-                />
-              </Field>
-              <Field label="본인이 맡은 역할">
-                <TextArea
-                  value={project.role}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "role", event.target.value)
-                  }
-                  placeholder="기획, 프론트엔드, API, DB, 배포 등 담당 범위를 적어주세요."
-                />
-              </Field>
-              <Field label="사용 기술스택">
-                <TextArea
-                  value={listToText(project.tech_stack)}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "tech_stack", parseList(event.target.value))
-                  }
-                  placeholder="Next.js, NestJS, PostgreSQL, AWS"
-                />
-              </Field>
-              <Field label="구현한 핵심 기능">
-                <TextArea
-                  value={listToText(project.implemented_features)}
-                  onChange={(event) =>
-                    updateProject(
-                      projectIndex,
-                      "implemented_features",
-                      parseList(event.target.value)
-                    )
-                  }
-                  placeholder="회원가입, 결제, 예약 캘린더, 관리자 대시보드"
-                />
-              </Field>
-              <Field label="프론트엔드 담당 범위">
-                <TextArea
-                  value={project.frontend_scope}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "frontend_scope", event.target.value)
-                  }
-                />
-              </Field>
-              <Field label="백엔드/API 담당 범위">
-                <TextArea
-                  value={project.backend_scope}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "backend_scope", event.target.value)
-                  }
-                />
-              </Field>
-              <Field label="DB 설계 또는 연동 경험">
-                <TextArea
-                  value={project.database_scope}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "database_scope", event.target.value)
-                  }
-                />
-              </Field>
-              <Field label="인증/권한 구현 경험">
-                <TextArea
-                  value={project.auth_experience}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "auth_experience", event.target.value)
-                  }
-                  placeholder="예: JWT, OAuth, Supabase Auth, 관리자 권한"
-                />
-              </Field>
-              <Field label="배포/운영 경험">
-                <TextArea
-                  value={project.deployment_experience}
-                  onChange={(event) =>
-                    updateProject(
-                      projectIndex,
-                      "deployment_experience",
-                      event.target.value
-                    )
-                  }
-                  placeholder="예: Vercel, AWS, Docker, 환경 변수, 도메인 연결"
-                />
-              </Field>
-              <Field label="실제 사용자 또는 고객 여부">
-                <TextArea
-                  value={project.real_user_or_client}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "real_user_or_client", event.target.value)
-                  }
-                  placeholder="예: 지인 테스트, 실제 고객, 내부 운영자, 개인 학습"
-                />
-              </Field>
-              <Field label="협업 인원">
-                <TextInput
-                  value={project.collaboration_people}
-                  onChange={(event) =>
-                    updateProject(
-                      projectIndex,
-                      "collaboration_people",
-                      event.target.value
-                    )
-                  }
-                  placeholder="예: 1명, 3명, 디자이너 1명 + 개발자 2명"
-                />
-              </Field>
-              <Field label="결과 또는 성과">
-                <TextArea
-                  value={project.result}
-                  onChange={(event) =>
-                    updateProject(projectIndex, "result", event.target.value)
-                  }
-                  placeholder="완성도, 사용자 반응, 운영 여부, 배운 점 등을 적어주세요."
-                />
-              </Field>
-              <div className="md:col-span-2">
-                <Field label="가장 어려웠던 문제">
-                  <TextArea
-                    value={project.difficulty}
-                    onChange={(event) =>
-                      updateProject(projectIndex, "difficulty", event.target.value)
-                    }
-                    placeholder="기술적 문제, 요구사항 변경, 협업 이슈 등 구체적으로 적어주세요."
-                  />
-                </Field>
+                  삭제
+                </Button>
               </div>
-              <div className="md:col-span-2">
-                <Field label="문제 해결 과정">
-                  <TextArea
-                    value={project.solution_process}
-                    onChange={(event) =>
-                      updateProject(projectIndex, "solution_process", event.target.value)
-                    }
-                    placeholder="원인 파악, 시도한 방법, 선택한 해결책, 결과를 순서대로 적어주세요."
-                  />
-                </Field>
+
+              <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-base font-bold text-slate-950">
+                  {isPrimaryProject ? "필수 입력" : "선택 프로젝트 기본 정보"}
+                </h3>
+                <div className="mt-4 grid gap-5 md:grid-cols-2">
+                  <Field label="프로젝트명" required={isPrimaryProject}>
+                    <TextInput
+                      value={project.name}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "name", event.target.value)
+                      }
+                      placeholder="예: 예약 관리 SaaS"
+                    />
+                  </Field>
+                  <Field label="프로젝트 유형" required={isPrimaryProject}>
+                    <SelectInput
+                      value={project.project_type}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "project_type", event.target.value)
+                      }
+                    >
+                      <option value="">선택해주세요</option>
+                      {projectTypeOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </SelectInput>
+                  </Field>
+                  <Field label="프로젝트 목적" required={isPrimaryProject}>
+                    <TextArea
+                      value={project.purpose}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "purpose", event.target.value)
+                      }
+                      placeholder="어떤 문제를 해결하기 위해 만든 프로젝트인지 적어주세요."
+                    />
+                  </Field>
+                  <Field label="본인이 맡은 역할" required={isPrimaryProject}>
+                    <TextArea
+                      value={project.role}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "role", event.target.value)
+                      }
+                      placeholder="기획, 프론트엔드, API, DB, 배포 등 담당 범위를 적어주세요."
+                    />
+                  </Field>
+                  <Field label="사용 기술스택" required={isPrimaryProject}>
+                    <TextArea
+                      value={listToText(project.tech_stack)}
+                      onChange={(event) =>
+                        updateProject(
+                          projectIndex,
+                          "tech_stack",
+                          parseList(event.target.value)
+                        )
+                      }
+                      placeholder="Next.js, NestJS, PostgreSQL, AWS"
+                    />
+                  </Field>
+                  <Field label="구현한 핵심 기능" required={isPrimaryProject}>
+                    <TextArea
+                      value={listToText(project.implemented_features)}
+                      onChange={(event) =>
+                        updateProject(
+                          projectIndex,
+                          "implemented_features",
+                          parseList(event.target.value)
+                        )
+                      }
+                      placeholder="회원가입, 결제, 예약 캘린더, 관리자 대시보드"
+                    />
+                  </Field>
+                  <Field label="가장 어려웠던 문제" required={isPrimaryProject}>
+                    <TextArea
+                      value={project.difficulty}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "difficulty", event.target.value)
+                      }
+                      placeholder="기술적 문제, 요구사항 변경, 협업 이슈 등 구체적으로 적어주세요."
+                    />
+                  </Field>
+                  <Field label="문제 해결 과정" required={isPrimaryProject}>
+                    <TextArea
+                      value={project.solution_process}
+                      onChange={(event) =>
+                        updateProject(
+                          projectIndex,
+                          "solution_process",
+                          event.target.value
+                        )
+                      }
+                      placeholder="원인 파악, 시도한 방법, 선택한 해결책, 결과를 순서대로 적어주세요."
+                    />
+                  </Field>
+                </div>
               </div>
-              <div className="md:col-span-2">
-                <Field label="이 프로젝트가 본인의 역량을 보여준다고 생각하는 이유">
-                  <TextArea
-                    value={project.capacity_reason}
-                    onChange={(event) =>
-                      updateProject(projectIndex, "capacity_reason", event.target.value)
-                    }
-                    placeholder="본인의 기술적 판단, 구현 범위, 문제 해결 방식이 드러나는 지점을 적어주세요."
-                  />
-                </Field>
-              </div>
+
+              <details className="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+                <summary className="cursor-pointer text-base font-bold text-slate-950">
+                  심화 정보 입력하기
+                </summary>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  배포·DB·협업 정보는 선택 항목입니다. 입력하면 향후 분석 리포트의
+                  근거가 더 풍부해집니다.
+                </p>
+                <div className="mt-4 grid gap-5 md:grid-cols-2">
+                  <Field label="프로젝트 URL">
+                    <TextInput
+                      value={project.url}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "url", event.target.value)
+                      }
+                      placeholder="https://..."
+                    />
+                  </Field>
+                  <Field label="GitHub repository URL">
+                    <TextInput
+                      value={project.github_url}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "github_url", event.target.value)
+                      }
+                      placeholder="https://github.com/..."
+                    />
+                  </Field>
+                  <Field label="프론트엔드 담당 범위">
+                    <TextArea
+                      value={project.frontend_scope}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "frontend_scope", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label="백엔드/API 담당 범위">
+                    <TextArea
+                      value={project.backend_scope}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "backend_scope", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label="DB 설계 또는 연동 경험">
+                    <TextArea
+                      value={project.database_scope}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "database_scope", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label="인증/권한 구현 경험">
+                    <TextArea
+                      value={project.auth_experience}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "auth_experience", event.target.value)
+                      }
+                      placeholder="예: JWT, OAuth, Supabase Auth, 관리자 권한"
+                    />
+                  </Field>
+                  <Field label="배포/운영 경험">
+                    <TextArea
+                      value={project.deployment_experience}
+                      onChange={(event) =>
+                        updateProject(
+                          projectIndex,
+                          "deployment_experience",
+                          event.target.value
+                        )
+                      }
+                      placeholder="예: Vercel, AWS, Docker, 환경 변수, 도메인 연결"
+                    />
+                  </Field>
+                  <Field label="실제 사용자 또는 고객 여부">
+                    <TextArea
+                      value={project.real_user_or_client}
+                      onChange={(event) =>
+                        updateProject(
+                          projectIndex,
+                          "real_user_or_client",
+                          event.target.value
+                        )
+                      }
+                      placeholder="예: 지인 테스트, 실제 고객, 내부 운영자, 개인 학습"
+                    />
+                  </Field>
+                  <Field label="협업 인원">
+                    <TextInput
+                      value={project.collaboration_people}
+                      onChange={(event) =>
+                        updateProject(
+                          projectIndex,
+                          "collaboration_people",
+                          event.target.value
+                        )
+                      }
+                      placeholder="예: 1명, 3명, 디자이너 1명 + 개발자 2명"
+                    />
+                  </Field>
+                  <Field label="결과 또는 성과">
+                    <TextArea
+                      value={project.result}
+                      onChange={(event) =>
+                        updateProject(projectIndex, "result", event.target.value)
+                      }
+                      placeholder="완성도, 사용자 반응, 운영 여부, 배운 점 등을 적어주세요."
+                    />
+                  </Field>
+                  <div className="md:col-span-2">
+                    <Field label="이 프로젝트가 본인의 역량을 보여준다고 생각하는 이유">
+                      <TextArea
+                        value={project.capacity_reason}
+                        onChange={(event) =>
+                          updateProject(
+                            projectIndex,
+                            "capacity_reason",
+                            event.target.value
+                          )
+                        }
+                        placeholder="본인의 기술적 판단, 구현 범위, 문제 해결 방식이 드러나는 지점을 적어주세요."
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </details>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -2256,8 +2514,11 @@ function CollaborationStep({
     <div>
       <SectionTitle
         title="협업 경험 입력"
-        description="협업 방식과 커뮤니케이션 경험을 구조화합니다. 사람 자체에 대한 평가는 하지 않습니다."
+        description="협업 경험은 필수는 아니지만, 비개발 의뢰자와의 업무적합도 분석에 중요한 참고 자료가 됩니다."
       />
+      <div className="mb-5 rounded-lg border border-sky-100 bg-sky-50 p-4 text-sm leading-6 text-sky-950">
+        모든 항목은 선택 입력입니다. 비어 있어도 다음 단계로 넘어갈 수 있습니다.
+      </div>
       <div className="grid gap-5 md:grid-cols-2">
         <Field label="PR/이슈/코드리뷰 경험 여부">
           <TextArea
@@ -2315,6 +2576,69 @@ function CollaborationStep({
   );
 }
 
+function WorkSampleAnswerCard({
+  answer,
+  questionNumber,
+  required,
+  updateWorkSampleAnswer
+}: {
+  answer: WorkSampleAnswer;
+  questionNumber: number;
+  required: boolean;
+  updateWorkSampleAnswer: (
+    questionId: string,
+    key: "answer" | "process_note",
+    value: string
+  ) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-teal-700">
+            질문 {questionNumber}
+            {required ? " · 필수" : " · 선택"}
+          </p>
+          <h2 className="mt-2 text-base font-bold leading-7 text-slate-950">
+            {answer.question}
+          </h2>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Field label="답변" required={required}>
+          <TextArea
+            value={answer.answer}
+            onChange={(event) =>
+              updateWorkSampleAnswer(
+                answer.question_id,
+                "answer",
+                event.target.value
+              )
+            }
+            className="min-h-40"
+            placeholder="어떤 기준으로 판단했는지, 의뢰자에게 어떻게 설명할지 구체적으로 작성해주세요."
+          />
+        </Field>
+        <Field label="생각한 과정 / 판단 기준">
+          <TextArea
+            value={answer.process_note}
+            onChange={(event) =>
+              updateWorkSampleAnswer(
+                answer.question_id,
+                "process_note",
+                event.target.value
+              )
+            }
+            className="min-h-40"
+            placeholder="이 답변을 작성할 때 어떤 순서로 생각했는지, 무엇을 중요하게 봤는지 적어주세요."
+          />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
 function WorkSampleStep({
   workSampleTest,
   updateWorkSampleAnswer,
@@ -2328,11 +2652,18 @@ function WorkSampleStep({
   ) => void;
   updateWorkSampleTime: (value: string) => void;
 }) {
+  const requiredAnswers = workSampleTest.answers
+    .map((answer, index) => ({ answer, index }))
+    .filter(({ answer }) => isRequiredWorkSampleQuestion(answer.question_id));
+  const optionalAnswers = workSampleTest.answers
+    .map((answer, index) => ({ answer, index }))
+    .filter(({ answer }) => !isRequiredWorkSampleQuestion(answer.question_id));
+
   return (
     <div>
       <SectionTitle
         title="실무 시나리오 테스트"
-        description="이 테스트는 정답을 맞히는 시험이 아니라, 실제 업무상황에서 요구사항을 이해하고, 우선순위를 정하고, 리스크를 설명하는 과정을 확인하기 위한 자료입니다."
+        description="정답을 맞히는 시험이 아니라, 실제 업무상황에서 어떻게 판단하는지 확인하기 위한 질문입니다. 필수 4문항만 작성해도 다음 단계로 넘어갈 수 있습니다."
       />
 
       <div className="rounded-lg border border-sky-100 bg-sky-50 p-5">
@@ -2350,60 +2681,34 @@ function WorkSampleStep({
       </div>
 
       <div className="mt-6 space-y-5">
-        {workSampleTest.answers.map((answer, index) => {
-          const required = requiredWorkSampleQuestionIds.includes(answer.question_id);
-
-          return (
-            <div
-              key={answer.question_id}
-              className="rounded-lg border border-slate-200 bg-white p-4"
-            >
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-teal-700">
-                    질문 {index + 1}
-                    {required ? " · 필수" : " · 선택"}
-                  </p>
-                  <h2 className="mt-2 text-base font-bold leading-7 text-slate-950">
-                    {answer.question}
-                  </h2>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                <Field label="답변" required={required}>
-                  <TextArea
-                    value={answer.answer}
-                    onChange={(event) =>
-                      updateWorkSampleAnswer(
-                        answer.question_id,
-                        "answer",
-                        event.target.value
-                      )
-                    }
-                    className="min-h-40"
-                    placeholder="어떤 기준으로 판단했는지, 의뢰자에게 어떻게 설명할지 구체적으로 작성해주세요."
-                  />
-                </Field>
-                <Field label="생각한 과정 / 판단 기준">
-                  <TextArea
-                    value={answer.process_note}
-                    onChange={(event) =>
-                      updateWorkSampleAnswer(
-                        answer.question_id,
-                        "process_note",
-                        event.target.value
-                      )
-                    }
-                    className="min-h-40"
-                    placeholder="이 답변을 작성할 때 어떤 순서로 생각했는지, 무엇을 중요하게 봤는지 적어주세요."
-                  />
-                </Field>
-              </div>
-            </div>
-          );
-        })}
+        <h3 className="text-base font-bold text-slate-950">필수 문항</h3>
+        {requiredAnswers.map(({ answer, index }) => (
+          <WorkSampleAnswerCard
+            key={answer.question_id}
+            answer={answer}
+            questionNumber={index + 1}
+            required
+            updateWorkSampleAnswer={updateWorkSampleAnswer}
+          />
+        ))}
       </div>
+
+      <details className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <summary className="cursor-pointer text-base font-bold text-slate-950">
+          선택 문항 보기: 더 정확한 분석을 원한다면 작성해주세요.
+        </summary>
+        <div className="mt-4 space-y-5">
+          {optionalAnswers.map(({ answer, index }) => (
+            <WorkSampleAnswerCard
+              key={answer.question_id}
+              answer={answer}
+              questionNumber={index + 1}
+              required={false}
+              updateWorkSampleAnswer={updateWorkSampleAnswer}
+            />
+          ))}
+        </div>
+      </details>
 
       <div className="mt-6 max-w-sm">
         <Field label="실제 작성에 걸린 시간">
@@ -2435,7 +2740,7 @@ function GenerateQuestionsStep({
     <div>
       <SectionTitle
         title="AI 추가 질문 생성"
-        description="기본 정보와 프로젝트 데이터를 입력한 뒤 기존 /api/generate-followups를 사용해 부족한 정보를 확인합니다."
+        description="AI 추가 질문은 선택 사항입니다. 답변하면 후보자 리포트의 정확도가 높아질 수 있습니다."
       />
       <div className="grid gap-4 md:grid-cols-3">
         {draft.projects.map((project, index) => (
@@ -2449,9 +2754,10 @@ function GenerateQuestionsStep({
       </div>
       <div className="mt-6 rounded-lg border border-sky-100 bg-sky-50 p-4">
         <p className="text-sm leading-6 text-sky-950">
-          추가 질문은 본인 기여도 명확화, 실제 풀스택 범위 확인, 문제 해결 과정
-          확인, 배포/운영 경험 확인, 협업 경험 확인, 요구사항 이해와 커뮤니케이션
-          확인 범주를 포함합니다.
+          질문을 생성하지 않아도 최종 확인과 제출로 넘어갈 수 있습니다. 생성되는
+          질문은 본인 기여도 명확화, 실제 풀스택 범위 확인, 문제 해결 과정 확인,
+          배포/운영 경험 확인, 협업 경험 확인, 요구사항 이해와 커뮤니케이션 확인
+          범주를 포함합니다.
         </p>
       </div>
       {generationError ? (
@@ -2472,7 +2778,7 @@ function GenerateQuestionsStep({
         onClick={generateFollowUps}
         className="mt-6"
       >
-        {isGenerating ? "질문 생성 중" : "부족한 정보 확인하기"}
+        {isGenerating ? "질문 생성 중" : "선택 질문 생성하기"}
       </Button>
     </div>
   );
@@ -2493,11 +2799,12 @@ function AnswerQuestionsStep({
     <div>
       <SectionTitle
         title="AI 추가 질문 답변"
-        description="각 질문 아래에 후보자의 답변을 입력합니다. 답변은 최종 candidate_profile JSON에 포함됩니다."
+        description="생성된 질문에 대한 답변은 선택 입력입니다. 작성한 답변은 최종 candidate_profile JSON에 포함됩니다."
       />
       {draft.raw_ai_follow_up_questions.length === 0 ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          생성된 추가 질문이 없습니다. 이전 단계에서 질문을 먼저 생성해주세요.
+          생성된 추가 질문이 없습니다. 이 단계는 선택 사항이므로 바로 다음 단계로
+          이동할 수 있습니다.
         </p>
       ) : (
         <div className="space-y-6">
@@ -2557,12 +2864,38 @@ function ReviewStep({
   handleSubmit: () => void | Promise<void>;
   isSubmittingToSupabase: boolean;
 }) {
+  const requiredCompletion = getRequiredCompletionSummary(draft, consent);
+  const optionalInputCount = getOptionalInputCount(draft);
+  const firstProject = draft.projects[0];
+  const requiredWorkSampleAnswers = draft.work_sample_test.answers.filter((answer) =>
+    isRequiredWorkSampleQuestion(answer.question_id)
+  );
+  const optionalWorkSampleAnswers = draft.work_sample_test.answers.filter(
+    (answer) => !isRequiredWorkSampleQuestion(answer.question_id)
+  );
+  const answeredAiFollowUps = draft.projects.flatMap((project, projectIndex) =>
+    project.ai_follow_up_answers
+      .filter((answer) => answer.answer.trim())
+      .map((answer) => ({
+        ...answer,
+        project_name: projectDisplayName(project, projectIndex)
+      }))
+  );
+  const collaborationInputCount = countFilledValues([
+    draft.collaboration_experience.pr_issue_code_review,
+    draft.collaboration_experience.role_distribution,
+    draft.collaboration_experience.requirement_change_response,
+    draft.collaboration_experience.delay_or_error_communication,
+    draft.collaboration_experience.non_developer_communication,
+    draft.collaboration_experience.collaboration_difficulty_solution
+  ]);
+
   return (
     <div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <SectionTitle
           title="최종 제출 전 확인"
-          description="수집된 데이터와 동의 상태를 확인합니다. 제출 시 candidate_profile과 consent_log가 생성되고, 설정된 경우 Supabase에 저장됩니다."
+          description="필수 제출 정보와 선택 입력 정보를 나누어 확인합니다. 선택 항목이 비어 있어도 제출할 수 있습니다."
         />
         <Button
           type="button"
@@ -2575,8 +2908,17 @@ function ReviewStep({
         </Button>
       </div>
 
+      <div className="mb-6 rounded-lg border border-sky-100 bg-sky-50 p-4 text-sm leading-6 text-sky-950">
+        선택 항목이 비어 있어도 제출할 수 있습니다. 다만 선택 정보가 많을수록 향후
+        분석 리포트의 근거가 풍부해집니다.
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-2">
-        <SummaryBlock title="동의 상태">
+        <SummaryBlock title="필수 제출 정보">
+          <SummaryRow
+            label="필수 완료율"
+            value={`${requiredCompletion.percent}% (${requiredCompletion.completedCount}/${requiredCompletion.totalCount})`}
+          />
           <SummaryRow
             label="개인정보 수집·이용 필수 동의"
             value={consent.privacy_collection_required ? "동의" : "미동의"}
@@ -2586,6 +2928,62 @@ function ReviewStep({
             value={consent.ai_analysis_required ? "동의" : "미동의"}
           />
           <SummaryRow
+            label="이름 또는 닉네임"
+            value={draft.candidate_basic_info.name_or_nickname}
+          />
+          <SummaryRow label="이메일" value={draft.candidate_basic_info.email} />
+          <SummaryRow label="GitHub URL" value={draft.links.github_url} />
+          <SummaryRow
+            label="희망 업무 유형"
+            value={draft.candidate_basic_info.preferred_work_type.join(", ")}
+          />
+          <div>
+            <p className="text-xs font-semibold text-slate-500">주요 기술스택</p>
+            <div className="mt-2">
+              <TagList items={draft.candidate_basic_info.tech_stack} />
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-slate-500">필수 항목 완료 여부</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {requiredCompletion.items.map((item) => (
+                <div
+                  key={item.label}
+                  className={classNames(
+                    "rounded-md border px-3 py-2 text-xs font-semibold",
+                    item.completed
+                      ? "border-teal-100 bg-teal-50 text-teal-900"
+                      : "border-amber-200 bg-amber-50 text-amber-900"
+                  )}
+                >
+                  {item.completed ? "완료" : "입력 필요"} · {item.label}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SummaryBlock>
+
+        <SummaryBlock title="첫 번째 대표 프로젝트 필수 정보">
+          <SummaryRow label="프로젝트명" value={firstProject?.name} />
+          <SummaryRow label="프로젝트 유형" value={firstProject?.project_type} />
+          <SummaryRow label="프로젝트 목적" value={firstProject?.purpose} />
+          <SummaryRow label="본인 역할" value={firstProject?.role} />
+          <SummaryRow
+            label="사용 기술스택"
+            value={firstProject?.tech_stack.join(", ")}
+          />
+          <SummaryRow
+            label="구현한 핵심 기능"
+            value={firstProject?.implemented_features.join(", ")}
+          />
+          <SummaryRow label="가장 어려웠던 문제" value={firstProject?.difficulty} />
+          <SummaryRow label="문제 해결 과정" value={firstProject?.solution_process} />
+        </SummaryBlock>
+      </div>
+
+      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+        <SummaryBlock title="선택 입력 정보">
+          <SummaryRow
             label="기업 매칭 활용 및 제3자 제공 선택 동의"
             value={consent.third_party_matching_optional ? "동의" : "미동의"}
           />
@@ -2593,72 +2991,41 @@ function ReviewStep({
             label="후속 실험 및 서비스 안내 수신 선택 동의"
             value={consent.marketing_optional ? "동의" : "미동의"}
           />
-        </SummaryBlock>
-
-        <SummaryBlock title="기본 정보">
-          <SummaryRow
-            label="이름 또는 닉네임"
-            value={draft.candidate_basic_info.name_or_nickname}
-          />
-          <SummaryRow label="이메일" value={draft.candidate_basic_info.email} />
           <SummaryRow
             label="현재 상태"
             value={draft.candidate_basic_info.current_status}
           />
-          <SummaryRow
-            label="희망 업무 유형"
-            value={draft.candidate_basic_info.preferred_work_type.join(", ")}
-          />
-        </SummaryBlock>
-
-        <SummaryBlock title="주요 기술스택">
-          <TagList items={draft.candidate_basic_info.tech_stack} />
-        </SummaryBlock>
-
-        <SummaryBlock title="링크">
-          <SummaryRow label="GitHub" value={draft.links.github_url} />
           <SummaryRow label="포트폴리오" value={draft.links.portfolio_url} />
           <SummaryRow label="배포 서비스" value={draft.links.deployed_service_url} />
           <SummaryRow label="기술 블로그" value={draft.links.blog_url} />
           <SummaryRow label="LinkedIn" value={draft.links.linkedin_url} />
+          <SummaryRow label="선택 입력 개수" value={`${optionalInputCount}개`} />
+          <SummaryRow label="협업 경험 입력 개수" value={`${collaborationInputCount}개`} />
         </SummaryBlock>
-      </div>
 
-      <div className="mt-6 space-y-5">
-        {draft.projects.map((project, index) => (
-          <div key={project.id} className="rounded-lg border border-slate-200 p-4">
-            <h2 className="text-lg font-bold text-slate-950">
-              {projectDisplayName(project, index)}
-            </h2>
-            <div className="mt-4 grid gap-5 lg:grid-cols-2">
-              <SummaryBlock title="대표 프로젝트">
-                <SummaryRow label="유형" value={project.project_type} />
-                <SummaryRow label="목적" value={project.purpose} />
-                <SummaryRow label="역할" value={project.role} />
-                <SummaryRow label="실제 사용자/고객" value={project.real_user_or_client} />
-                <SummaryRow label="성과" value={project.result} />
-              </SummaryBlock>
-              <SummaryBlock title="풀스택 경험 범위">
-                <SummaryRow label="프론트엔드" value={project.frontend_scope} />
-                <SummaryRow label="백엔드/API" value={project.backend_scope} />
-                <SummaryRow label="DB" value={project.database_scope} />
-                <SummaryRow label="인증/권한" value={project.auth_experience} />
-                <SummaryRow label="배포/운영" value={project.deployment_experience} />
-              </SummaryBlock>
-              <SummaryBlock title="문제 해결 사례">
-                <SummaryRow label="어려웠던 문제" value={project.difficulty} />
-                <SummaryRow label="해결 과정" value={project.solution_process} />
-                <SummaryRow label="역량을 보여주는 이유" value={project.capacity_reason} />
-              </SummaryBlock>
-              <SummaryBlock title="AI 추가 질문 답변">
-                <SummaryRow
-                  label="답변 수"
-                  value={`${project.ai_follow_up_answers.filter((answer) => answer.answer.trim()).length}개`}
-                />
-              </SummaryBlock>
+        <SummaryBlock title="프로젝트 심화 정보">
+          {draft.projects.map((project, index) => (
+            <div key={project.id} className="rounded-md border border-slate-100 p-3">
+              <p className="mb-2 text-sm font-bold text-slate-950">
+                {projectDisplayName(project, index)}
+              </p>
+              <SummaryRow label="프로젝트 URL" value={project.url} />
+              <SummaryRow label="GitHub repository URL" value={project.github_url} />
+              <SummaryRow label="프론트엔드 담당 범위" value={project.frontend_scope} />
+              <SummaryRow label="백엔드/API 담당 범위" value={project.backend_scope} />
+              <SummaryRow label="DB 설계 또는 연동 경험" value={project.database_scope} />
+              <SummaryRow label="인증/권한 구현 경험" value={project.auth_experience} />
+              <SummaryRow label="배포/운영 경험" value={project.deployment_experience} />
+              <SummaryRow label="실제 사용자 또는 고객 여부" value={project.real_user_or_client} />
+              <SummaryRow label="협업 인원" value={project.collaboration_people} />
+              <SummaryRow label="결과 또는 성과" value={project.result} />
+              <SummaryRow
+                label="역량을 보여준다고 생각하는 이유"
+                value={project.capacity_reason}
+              />
             </div>
-          </div>
-        ))}
+          ))}
+        </SummaryBlock>
       </div>
 
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
@@ -2688,26 +3055,8 @@ function ReviewStep({
             value={draft.collaboration_experience.collaboration_difficulty_solution}
           />
         </SummaryBlock>
-        <SummaryBlock title="AI 추가 질문">
-          <SummaryRow
-            label="생성 질문 수"
-            value={`${draft.raw_ai_follow_up_questions.length}개`}
-          />
-          <SummaryRow
-            label="전체 답변 수"
-            value={`${draft.projects.reduce(
-              (sum, project) =>
-                sum +
-                project.ai_follow_up_answers.filter((answer) => answer.answer.trim())
-                  .length,
-              0
-            )}개`}
-          />
-        </SummaryBlock>
-      </div>
 
-      <div className="mt-6">
-        <SummaryBlock title="실무 시나리오 테스트">
+        <SummaryBlock title="실무 테스트 요약">
           <SummaryRow
             label="시나리오 제목"
             value={draft.work_sample_test.scenario_title}
@@ -2729,14 +3078,56 @@ function ReviewStep({
                 : "필수 문항 추가 입력 필요"
             }
           />
-          <div className="grid gap-3 md:grid-cols-2">
-            {draft.work_sample_test.answers.map((answer, index) => (
+        </SummaryBlock>
+      </div>
+
+      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+        <SummaryBlock title="실무 테스트 필수 답변">
+          <div className="space-y-3">
+            {requiredWorkSampleAnswers.map((answer, index) => (
               <SummaryRow
                 key={answer.question_id}
                 label={`Q${index + 1}. ${answer.question}`}
                 value={summarizeWorkSampleAnswer(answer)}
               />
             ))}
+          </div>
+        </SummaryBlock>
+
+        <SummaryBlock title="실무 테스트 선택 답변">
+          <div className="space-y-3">
+            {optionalWorkSampleAnswers.map((answer, index) => (
+              <SummaryRow
+                key={answer.question_id}
+                label={`선택 ${index + 1}. ${answer.question}`}
+                value={summarizeWorkSampleAnswer(answer)}
+              />
+            ))}
+          </div>
+        </SummaryBlock>
+      </div>
+
+      <div className="mt-6">
+        <SummaryBlock title="AI 추가 질문 답변">
+          <SummaryRow
+            label="생성 질문 수"
+            value={`${draft.raw_ai_follow_up_questions.length}개`}
+          />
+          <SummaryRow label="답변 수" value={`${answeredAiFollowUps.length}개`} />
+          <div className="space-y-3">
+            {answeredAiFollowUps.length > 0 ? (
+              answeredAiFollowUps.map((answer) => (
+                <SummaryRow
+                  key={`${answer.project_name}-${answer.category}-${answer.question}`}
+                  label={`${answer.project_name} · ${answer.category}`}
+                  value={`${answer.question}\n${answer.answer}`}
+                />
+              ))
+            ) : (
+              <p className="text-sm leading-6 text-slate-600">
+                AI 추가 질문 답변은 선택 입력입니다.
+              </p>
+            )}
           </div>
         </SummaryBlock>
       </div>
