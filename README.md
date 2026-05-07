@@ -37,6 +37,21 @@ ADMIN_ACCESS_KEY=your_admin_access_key
 
 루브릭은 채용 여부 결정이나 사람 자체에 대한 단정이 아니라, 업무상황 답변에서 확인 가능한 근거를 분류하기 위한 기준입니다.
 
+## 실무 테스트 분석 리포트
+
+실무 테스트 분석 리포트 생성 API가 추가되었습니다. `candidate_profile.work_sample_test` 답변과 `lib/workSampleRubric.ts`의 루브릭을 함께 사용해 `WorkSampleAnalysisReport` 형식의 리포트를 생성합니다.
+
+- API 경로: `POST /api/analyze-work-sample`
+- 입력: `candidate_profile`, 선택 입력 `candidate_submission_id`, `save_to_supabase`
+- 출력: `WorkSampleAnalysisReport`
+- 관리자 테스트 페이지: `/admin/work-sample-analysis`
+- 리포트 저장 테이블: `candidate_work_sample_reports`
+- Supabase SQL 파일: `supabase/sql/create_candidate_work_sample_reports.sql`
+
+`save_to_supabase: true`로 요청하면 서버 Route가 service role key를 사용해 `candidate_work_sample_reports` 테이블에 저장합니다. RLS는 켜두되 공개 insert policy는 만들지 않습니다.
+
+OpenAI 호출이 실패하거나 Cloudflare Worker 환경에서 호출이 제한되면 fallback 리포트가 생성될 수 있습니다. fallback 리포트는 자동 평가 결과가 아니라 루브릭 기준 수동 검토용 초안이며, 응답의 `fallback_used`와 `fallback_reason`으로 확인할 수 있습니다.
+
 ## 실행
 
 ```bash
@@ -147,5 +162,7 @@ ADMIN_ACCESS_KEY=
 - `candidate_profile.json` 다운로드
 - `consent_log.json` 다운로드
 - Supabase `candidate_submissions` 테이블 저장
+- `POST /api/analyze-work-sample` 기반 실무 테스트 분석 리포트 생성
+- Supabase `candidate_work_sample_reports` 테이블 저장 옵션
 
 현재 버전은 localStorage와 JSON Export를 유지하면서, 환경변수가 설정된 경우 Supabase 저장도 사용할 수 있습니다. 채용 여부 결정, 사람 자체에 대한 단정, 기업 제공 기능은 포함하지 않습니다.
